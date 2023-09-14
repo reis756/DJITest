@@ -34,6 +34,10 @@ android {
         jvmTarget = JavaVersion.VERSION_1_8
         freeCompilerArgs += ["-Xjvm-default=all"]
     }
+
+    packagingOptions {
+        resources.excludes.add("META-INF/*")
+    }
 }
 
 dependencies {
@@ -54,6 +58,7 @@ dependencies {
     api deps.rx3Android
     implementation deps.bugly
     implementation deps.leakcanary
+    implementation deps.hivemq
     api deps.glide
     kapt deps.glidecompiler
     api deps.dynamicanimation

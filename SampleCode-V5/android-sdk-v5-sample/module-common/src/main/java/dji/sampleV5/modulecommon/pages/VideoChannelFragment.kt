@@ -8,11 +8,13 @@ import android.media.MediaFormat
 import android.os.*
 import android.view.*
 import android.widget.Button
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.ViewModelProvider
 import dji.sampleV5.modulecommon.R
+import dji.sampleV5.modulecommon.api.MqttClient
 import dji.sampleV5.modulecommon.data.DEFAULT_STR
 import dji.sampleV5.modulecommon.models.MultiVideoChannelVM
 import dji.sampleV5.modulecommon.models.VideoChannelVM
@@ -28,7 +30,7 @@ import dji.v5.utils.common.*
 import kotlinx.android.synthetic.main.video_channel_horizontal_scrollview.*
 import kotlinx.android.synthetic.main.video_channel_page.*
 import java.io.*
-
+@RequiresApi(Build.VERSION_CODES.N)
 class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback,
     YuvDataListener {
     private val TAG = LogUtils.getTag("VideoChannelFragment")
@@ -62,7 +64,10 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         }
     }
 
+    private val mqttClient = MqttClient()
+
     //组帧后数据Listener
+
     private val streamDataListener =
         StreamDataListener {
             /**
@@ -71,6 +76,8 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
              * @param VideoFrame 码流帧数据
              */
             it?.let {
+                mqttClient.publish(it.data)
+
                 if (fps != it.fps) {
                     fps = it.fps
                     mainHandler.post {
@@ -164,6 +171,9 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                 video_stream_info.text = videoStreamInfo
             }
         }
+
+        mqttClient.connect()
+
         channelVM.videoChannel?.addStreamDataListener(streamDataListener) ?: showDisconnectToast()
         this@VideoChannelFragment.setFragmentResultListener("ResetAllVideoChannel") { requestKey, _ ->
             if ("ResetAllVideoChannel" == requestKey) {
@@ -178,7 +188,9 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
 
     override fun onDestroyView() {
         super.onDestroyView()
+
         channelVM.videoChannel?.removeStreamDataListener(streamDataListener)
+        mqttClient.disconnect()
         if (videoDecoder != null) {
             videoDecoder?.destroy()
             videoDecoder = null

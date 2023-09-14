@@ -7,6 +7,7 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
+import com.hivemq.client.mqtt.mqtt3.Mqtt3Client
 import dji.sampleV5.modulecommon.R
 import dji.sampleV5.modulecommon.models.LiveStreamVM
 import dji.v5.common.callback.CommonCallbacks
@@ -31,28 +32,30 @@ import kotlinx.android.synthetic.main.frag_live_stream_page.*
  * CreateDate : 2022/3/23 10:58 上午
  * Copyright : ©2022 DJI All Rights Reserved.
  */
-class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callback{
-    private val liveStreamVM:LiveStreamVM by viewModels()
+class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback {
+    private val liveStreamVM: LiveStreamVM by viewModels()
     private var videoDecoder: IVideoDecoder? = null
     private lateinit var surfaceView: SurfaceView
     private lateinit var dialog: AlertDialog
     private lateinit var configDialog: AlertDialog
     private var checkedItem: Int = -1
     private var isConfigSelected = false
-    private var liveStreamType:LiveStreamType = LiveStreamType.UNKNOWN
-    private var liveStreamBitrateMode:LiveVideoBitrateMode = LiveVideoBitrateMode.AUTO
-    private var liveStreamQuality:StreamQuality = StreamQuality.UNKNOWN
+    private var liveStreamType: LiveStreamType = LiveStreamType.UNKNOWN
+    private var liveStreamBitrateMode: LiveVideoBitrateMode = LiveVideoBitrateMode.AUTO
+    private var liveStreamQuality: StreamQuality = StreamQuality.UNKNOWN
     private val msg = "input is null"
 
-    var fps:Int=-1
-    var vbps:Int=-1
-    var isStreaming:Boolean=false
-    var resolution_w:Int=-1
-    var resolution_h:Int=-1
-    var packet_loss:Int =-1
-    var packet_cache_len:Int =-1
-    var rtt:Int =-1
-    var error:IDJIError?=null
+    private lateinit var client: Mqtt3Client
+
+    var fps: Int = -1
+    var vbps: Int = -1
+    var isStreaming: Boolean = false
+    var resolution_w: Int = -1
+    var resolution_h: Int = -1
+    var packet_loss: Int = -1
+    var packet_cache_len: Int = -1
+    var rtt: Int = -1
+    var error: IDJIError? = null
 
     var curWidth: Int = -1
     var curHeight: Int = -1
@@ -67,7 +70,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        view.setLayerType(View.LAYER_TYPE_NONE , null)
+        view.setLayerType(View.LAYER_TYPE_NONE, null)
         initView(view)
         initListener()
         initLiveStreamInfo()
@@ -112,7 +115,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
             }
         }
 
-        liveStreamVM.curLiveStreamError.observe(viewLifecycleOwner){
+        liveStreamVM.curLiveStreamError.observe(viewLifecycleOwner) {
             it?.let {
                 error = it
                 updateLiveStreamInfo()
@@ -120,7 +123,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         }
     }
 
-    private fun updateLiveStreamInfo(){
+    private fun updateLiveStreamInfo() {
         val liveStreamInfo = "\nfps: ${fps}fps \n" +
                 "vbps: ${vbps}Kbps \n" +
                 "isStreaming: $isStreaming \n" +
@@ -128,7 +131,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
                 "resolution_h: $resolution_h \n" +
                 "packet_loss: ${packet_loss}% \n" +
                 "packet_cache_len: $packet_cache_len \n" +
-                "rtt: ${rtt}ms \n"+
+                "rtt: ${rtt}ms \n" +
                 "error: $error"
         tv_live_stream_info.text = liveStreamInfo
     }
@@ -152,7 +155,8 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
             }
 
             R.id.btn_get_live_stream_config -> {
-                val streamConfig = liveStreamVM.getLiveStreamConfig()?.let { liveStreamVM.getLiveStreamConfig().toString() }?:let { "null" }
+                val streamConfig = liveStreamVM.getLiveStreamConfig()
+                    ?.let { liveStreamVM.getLiveStreamConfig().toString() } ?: let { "null" }
                 ToastUtils.showToast(streamConfig)
             }
 
@@ -221,7 +225,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
     }
 
     private fun stopStream() {
-        liveStreamVM.stopStream(object:CommonCallbacks.CompletionCallback{
+        liveStreamVM.stopStream(object : CommonCallbacks.CompletionCallback {
             override fun onSuccess() {
                 ToastUtils.showToast(StringUtils.getResStr(R.string.msg_stop_live_stream_success))
                 clearLiveStreamInfo()
@@ -238,7 +242,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         })
     }
 
-    private fun showSetLiveStreamRtmpConfigDialog(){
+    private fun showSetLiveStreamRtmpConfigDialog() {
         val factory = LayoutInflater.from(this@LiveStreamFragment.requireContext())
         val rtmpConfigView = factory.inflate(R.layout.dialog_livestream_rtmp_config_view, null)
         val etRtmpUrl = rtmpConfigView.findViewById<EditText>(R.id.et_livestream_rtmp_config)
@@ -274,7 +278,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         configDialog.show()
     }
 
-    private fun showSetLiveStreamRtspConfigDialog(){
+    private fun showSetLiveStreamRtspConfigDialog() {
         val factory = LayoutInflater.from(this@LiveStreamFragment.requireContext())
         val rtspConfigView = factory.inflate(R.layout.dialog_livestream_rtsp_config_view, null)
         val etRtspUsername = rtspConfigView.findViewById<EditText>(R.id.et_livestream_rtsp_username)
@@ -340,15 +344,17 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         configDialog.show()
     }
 
-    private fun showSetLiveStreamGb28181ConfigDialog(){
+    private fun showSetLiveStreamGb28181ConfigDialog() {
         val factory = LayoutInflater.from(this@LiveStreamFragment.requireContext())
         val gbConfigView = factory.inflate(R.layout.dialog_livestream_gb28181_config_view, null)
         val etGbServerIp = gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_server_ip)
-        val etGbServerPort = gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_server_port)
+        val etGbServerPort =
+            gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_server_port)
         val etGbServerId = gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_server_id)
         val etGbAgentId = gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_agent_id)
         val etGbChannel = gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_channel)
-        val etGbLocalPort = gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_local_port)
+        val etGbLocalPort =
+            gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_local_port)
         val etGbPassword = gbConfigView.findViewById<EditText>(R.id.et_livestream_gb28181_password)
 
         val gbConfig = liveStreamVM.getGb28181Settings()
@@ -441,11 +447,12 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         configDialog.show()
     }
 
-    private fun showSetLiveStreamAgoraConfigDialog(){
+    private fun showSetLiveStreamAgoraConfigDialog() {
         val factory = LayoutInflater.from(this@LiveStreamFragment.requireContext())
         val agoraConfigView = factory.inflate(R.layout.dialog_livestream_agora_config_view, null)
 
-        val etAgoraChannelId = agoraConfigView.findViewById<EditText>(R.id.et_livestream_agora_channel_id)
+        val etAgoraChannelId =
+            agoraConfigView.findViewById<EditText>(R.id.et_livestream_agora_channel_id)
         val etAgoraToken = agoraConfigView.findViewById<EditText>(R.id.et_livestream_agora_token)
         val etAgoraUid = agoraConfigView.findViewById<EditText>(R.id.et_livestream_agora_uid)
 
@@ -489,7 +496,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         configDialog.show()
     }
 
-    private fun showSetLiveStreamBitrateDialog(){
+    private fun showSetLiveStreamBitrateDialog() {
         val editText = EditText(this@LiveStreamFragment.requireContext())
         dialog = this@LiveStreamFragment.requireContext()?.let {
             AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
@@ -528,7 +535,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         dialog.show()
     }
 
-    private fun showSetLiveStreamQualityDialog(){
+    private fun showSetLiveStreamQualityDialog() {
         val liveStreamQualities = liveStreamVM.getLiveStreamQualities()
         liveStreamQualities?.let {
             val items = arrayOfNulls<String>(liveStreamQualities.size)
@@ -544,7 +551,8 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
                         .setSingleChoiceItems(items, checkedItem) { _, i ->
                             checkedItem = i
                             ToastUtils.showToast(
-                                "选择所使用的bitRateMode： " + (items[i] ?: "选择所使用的bitRateMode为null"),
+                                "选择所使用的bitRateMode： " + (items[i]
+                                    ?: "选择所使用的bitRateMode为null"),
                             )
                         }
                         .setPositiveButton(R.string.ad_confirm) { dialog, _ ->
@@ -582,7 +590,8 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
                         .setSingleChoiceItems(items, checkedItem) { _, i ->
                             checkedItem = i
                             ToastUtils.showToast(
-                                "选择所使用的bitRateMode： " + (items[i] ?: "选择所使用的bitRateMode为null"),
+                                "选择所使用的bitRateMode： " + (items[i]
+                                    ?: "选择所使用的bitRateMode为null"),
                             )
                         }
                         .setPositiveButton("确认") { dialog, _ ->
@@ -620,14 +629,15 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
                         .setSingleChoiceItems(items, checkedItem) { _, i ->
                             checkedItem = i
                             ToastUtils.showToast(
-                                "选择使用所使用的channel： " + (items[i] ?: "选择使用所使用的channel为null"),
+                                "选择使用所使用的channel： " + (items[i]
+                                    ?: "选择使用所使用的channel为null"),
                             )
                         }
                         .setPositiveButton("确认") { dialog, _ ->
                             kotlin.run {
                                 if (liveStreamVM.getVideoChannel() != liveStreamChannelTypes[checkedItem]) {
                                     judgeChannel(liveStreamChannelTypes[checkedItem])
-                                }else{
+                                } else {
                                     ToastUtils.showToast(
                                         "Chanel is same"
                                     )
@@ -648,17 +658,17 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
         }
     }
 
-    private fun judgeChannel(videoChannel: VideoChannelType){
+    private fun judgeChannel(videoChannel: VideoChannelType) {
         if (liveStreamVM.getChannelStatus(videoChannel) == VideoChannelState.ON) {
             setVideChannel(videoChannel)
-        }else{
+        } else {
             ToastUtils.showToast(
                 "Chanel is not open"
             )
         }
     }
 
-    private fun setVideChannel(videoChannel:VideoChannelType){
+    private fun setVideChannel(videoChannel: VideoChannelType) {
         videoDecoder?.let {
             videoDecoder?.onPause()
             videoDecoder?.destroy()
@@ -704,7 +714,7 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
                         }
                         .setPositiveButton("确认") { dialog, _ ->
                             kotlin.run {
-                                if(isConfigSelected){
+                                if (isConfigSelected) {
                                     liveStreamType = liveStreamTypes[checkedItem]
                                     setLiveStreamConfig(liveStreamType)
                                 }
@@ -731,12 +741,15 @@ class LiveStreamFragment:DJIFragment(), View.OnClickListener,SurfaceHolder.Callb
                 LiveStreamType.RTMP -> {
                     showSetLiveStreamRtmpConfigDialog()
                 }
+
                 LiveStreamType.RTSP -> {
                     showSetLiveStreamRtspConfigDialog()
                 }
+
                 LiveStreamType.GB28181 -> {
                     showSetLiveStreamGb28181ConfigDialog()
                 }
+
                 LiveStreamType.AGORA -> {
                     showSetLiveStreamAgoraConfigDialog()
                 }
