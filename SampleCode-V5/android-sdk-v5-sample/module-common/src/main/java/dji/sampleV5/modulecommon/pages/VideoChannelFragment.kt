@@ -6,6 +6,7 @@ import android.graphics.YuvImage
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.os.*
+import android.util.Log
 import android.view.*
 import android.widget.Button
 import androidx.annotation.RequiresApi
@@ -13,6 +14,9 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.ViewModelProvider
+import com.rabbitmq.client.Channel
+import com.rabbitmq.client.Connection
+import com.rabbitmq.client.ConnectionFactory
 import dji.sampleV5.modulecommon.R
 import dji.sampleV5.modulecommon.api.MqttClient
 import dji.sampleV5.modulecommon.data.DEFAULT_STR
@@ -30,6 +34,12 @@ import dji.v5.utils.common.*
 import kotlinx.android.synthetic.main.video_channel_horizontal_scrollview.*
 import kotlinx.android.synthetic.main.video_channel_page.*
 import java.io.*
+import java.net.URISyntaxException
+import java.security.KeyManagementException
+import java.security.NoSuchAlgorithmException
+import java.util.concurrent.BlockingDeque
+import java.util.concurrent.LinkedBlockingDeque
+
 @RequiresApi(Build.VERSION_CODES.N)
 class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback,
     YuvDataListener {
@@ -65,6 +75,9 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
     }
 
     private val mqttClient = MqttClient()
+    var publishThread: Thread? = null
+    var factory = ConnectionFactory()
+    private val queue: BlockingDeque<String> = LinkedBlockingDeque()
 
     //组帧后数据Listener
 
@@ -77,6 +90,8 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
              */
             it?.let {
                 mqttClient.publish(it.data)
+
+                publishMessage(it.data.toString())
 
                 if (fps != it.fps) {
                     fps = it.fps
@@ -104,6 +119,66 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                 }
             }
         }
+
+    private fun setupConnectionFactory() {
+        try {
+            factory.username = "guest"
+            factory.password = "guest"
+            factory.virtualHost = "/"
+            factory.host = "54.232.143.5"
+            factory.port = 5672
+            factory.isAutomaticRecoveryEnabled = false
+        } catch (e1: KeyManagementException) {
+            e1.printStackTrace()
+        } catch (e1: NoSuchAlgorithmException) {
+            e1.printStackTrace()
+        } catch (e1: URISyntaxException) {
+            e1.printStackTrace()
+        }
+    }
+
+    private fun publishToAMQP() {
+        publishThread = Thread {
+            while (true) {
+                try {
+                    val connection: Connection = factory.newConnection()
+                    val ch: Channel = connection.createChannel()
+                    ch.confirmSelect()
+                    while (true) {
+                        val message = queue.takeFirst()
+                        try {
+                            ch.basicPublish("amq.fanout", "chat", null, message.toByteArray())
+                            Log.d("MainActivity", "[s] $message")
+                            ch.waitForConfirmsOrDie()
+                        } catch (e: Exception) {
+                            Log.d("MainActivity", "[f] $message")
+                            queue.putFirst(message)
+                            throw e
+                        }
+                    }
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    Log.d("MainActivity", "Connection broken: " + e.javaClass.name)
+                    try {
+                        Thread.sleep(5000) //sleep and then try again
+                    } catch (e1: InterruptedException) {
+                        break
+                    }
+                }
+            }
+        }
+        publishThread?.start()
+    }
+
+    private fun publishMessage(message: String) {
+        try {
+            Log.d("", "[q] $message")
+            queue.putLast(message)
+        } catch (e: InterruptedException) {
+            e.printStackTrace()
+        }
+    }
 
     private val decoderStateChangeListener =
         DecoderStateChangeListener { oldState, newState ->
@@ -156,6 +231,9 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             streamSources = it
         }
         initVideoChannelInfo()
+
+        setupConnectionFactory()
+        publishToAMQP()
     }
 
     private fun initVideoChannelInfo() {

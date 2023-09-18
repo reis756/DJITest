@@ -59,6 +59,7 @@ dependencies {
     implementation deps.bugly
     implementation deps.leakcanary
     implementation deps.hivemq
+    implementation deps.rabbitmq
     api deps.glide
     kapt deps.glidecompiler
     api deps.dynamicanimation
