@@ -594,14 +594,14 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                                     ?: "选择所使用的bitRateMode为null"),
                             )
                         }
-                        .setPositiveButton("确认") { dialog, _ ->
+                        .setPositiveButton(getString(R.string.ad_confirm)) { dialog, _ ->
                             kotlin.run {
                                 liveStreamBitrateMode = liveStreamBitrateModes[checkedItem]
                                 liveStreamVM.setLiveVideoBitRateMode(liveStreamBitrateMode)
                                 dialog.dismiss()
                             }
                         }
-                        .setNegativeButton("取消") { dialog, _ ->
+                        .setNegativeButton(getString(R.string.ad_cancel)) { dialog, _ ->
                             kotlin.run {
                                 dialog.dismiss()
                             }
@@ -633,7 +633,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                                     ?: "选择使用所使用的channel为null"),
                             )
                         }
-                        .setPositiveButton("确认") { dialog, _ ->
+                        .setPositiveButton(getString(R.string.ad_confirm)) { dialog, _ ->
                             kotlin.run {
                                 if (liveStreamVM.getVideoChannel() != liveStreamChannelTypes[checkedItem]) {
                                     judgeChannel(liveStreamChannelTypes[checkedItem])
@@ -646,7 +646,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                                 dialog.dismiss()
                             }
                         }
-                        .setNegativeButton("取消") { dialog, _ ->
+                        .setNegativeButton(getString(R.string.ad_cancel)) { dialog, _ ->
                             kotlin.run {
                                 dialog.dismiss()
                             }
@@ -712,7 +712,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                                 "选择的直播类型为： " + (items[i] ?: "直播类型为null"),
                             )
                         }
-                        .setPositiveButton("确认") { dialog, _ ->
+                        .setPositiveButton(getString(R.string.ad_confirm)) { dialog, _ ->
                             kotlin.run {
                                 if (isConfigSelected) {
                                     liveStreamType = liveStreamTypes[checkedItem]
@@ -722,7 +722,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                                 isConfigSelected = false
                             }
                         }
-                        .setNegativeButton("取消") { dialog, _ ->
+                        .setNegativeButton(getString(R.string.ad_cancel)) { dialog, _ ->
                             kotlin.run {
                                 dialog.dismiss()
                                 isConfigSelected = false

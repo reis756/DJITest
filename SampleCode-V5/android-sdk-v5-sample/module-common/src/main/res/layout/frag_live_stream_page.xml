@@ -142,7 +142,7 @@
     </androidx.core.widget.NestedScrollView>
 
     <LinearLayout
-        android:layout_width="400dp"
+        android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_constraintLeft_toRightOf="@+id/live_stream_button_list"
         app:layout_constraintTop_toTopOf="parent"
