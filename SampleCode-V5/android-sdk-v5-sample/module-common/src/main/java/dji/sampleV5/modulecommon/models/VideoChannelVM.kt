@@ -1,6 +1,8 @@
 package dji.sampleV5.modulecommon.models
 
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
+import dji.sampleV5.modulecommon.api.RabbitMq
 import dji.sampleV5.modulecommon.data.VideoChannelInfo
 import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.FlightControllerKey
@@ -16,6 +18,7 @@ import dji.v5.et.create
 import dji.v5.et.listen
 import dji.v5.manager.KeyManager
 import dji.v5.manager.datacenter.MediaDataCenter
+import kotlinx.coroutines.launch
 
 class VideoChannelVM(channelType: VideoChannelType) : DJIViewModel() {
     val videoChannelInfo = MutableLiveData<VideoChannelInfo>()
@@ -23,6 +26,8 @@ class VideoChannelVM(channelType: VideoChannelType) : DJIViewModel() {
     var videoChannelStateListener: VideoChannelStateChangeListener? = null
     var curChannelType: VideoChannelType? = null
     var fcHasInit = false
+
+    val rabbitMq = RabbitMq()
     init {
         MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(channelType)
             ?.let {
@@ -104,5 +109,25 @@ class VideoChannelVM(channelType: VideoChannelType) : DJIViewModel() {
 
     fun refreshVideoChannelInfo() {
         videoChannelInfo.postValue(videoChannelInfo.value)
+    }
+
+    fun setupRabbitMqConnectionFactory(
+        userName: String,
+        password: String,
+        virtualHost: String,
+        host: String,
+        port: Int,
+        queueName: String
+    ) {
+        viewModelScope.launch {
+            rabbitMq.setupConnectionFactory(userName, password, virtualHost, host, port)
+            rabbitMq.prepareConnection(queueName)
+        }
+    }
+
+    fun publishMessage(queue: String, message: String) {
+        viewModelScope.launch {
+            rabbitMq.publishMessage(queue, message)
+        }
     }
 }

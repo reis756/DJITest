@@ -1,5 +1,10 @@
 package dji.sampleV5.modulecommon.pages
 
+import android.R.attr.data
+import android.R.attr.height
+import android.R.attr.width
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
@@ -9,11 +14,13 @@ import android.os.*
 import android.util.Log
 import android.view.*
 import android.widget.Button
+import android.widget.ImageView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.ViewModelProvider
+import com.google.gson.Gson
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
@@ -33,12 +40,16 @@ import dji.v5.common.video.stream.StreamSource
 import dji.v5.utils.common.*
 import kotlinx.android.synthetic.main.video_channel_horizontal_scrollview.*
 import kotlinx.android.synthetic.main.video_channel_page.*
+import org.json.JSONObject
 import java.io.*
 import java.net.URISyntaxException
 import java.security.KeyManagementException
 import java.security.NoSuchAlgorithmException
+import java.security.Timestamp
+import java.util.Base64
 import java.util.concurrent.BlockingDeque
 import java.util.concurrent.LinkedBlockingDeque
+
 
 @RequiresApi(Build.VERSION_CODES.N)
 class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback,
@@ -53,6 +64,8 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
     private var videoDecoder: IVideoDecoder? = null
     private var serverSocket: IVideoVideoServerSocket? = null
 
+    lateinit var imageview: ImageView
+
     private var videoWidth: Int = -1
     private var videoHeight: Int = -1
     private var widthChanged = false
@@ -61,6 +74,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
 
     private var checkedItem: Int = -1
     private var count: Int = 0
+    private var countStream: Int = 0
     private var stringBuilder: StringBuilder? = StringBuilder()
     private val DISPLAY = 100
     private val mHandler: Handler = object : Handler(Looper.getMainLooper()) {
@@ -77,6 +91,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
     private val mqttClient = MqttClient()
     var publishThread: Thread? = null
     var factory = ConnectionFactory()
+    lateinit var channel: Channel
     private val queue: BlockingDeque<String> = LinkedBlockingDeque()
 
     //组帧后数据Listener
@@ -89,9 +104,31 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
              * @param VideoFrame 码流帧数据
              */
             it?.let {
-                mqttClient.publish(it.data)
+                /*if (++countStream == 30) {
+                    countStream = 0
 
-                publishMessage(it.data.toString())
+                    BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
+
+                    it.data?.let { byteArray ->
+                        mainHandler.post {
+                            val bitmap = BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
+                            //val bitmap = BitmapFactory.decodeStream(ByteArrayInputStream(it.data))
+                            val blob = ByteArrayOutputStream()
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 0 , blob)
+                            val bitmapdata = blob.toByteArray()
+                            publishMessage(bitmapdata.toBase64())
+                        }
+
+                        //val bitmap = BitmapFactory.decodeByteArray(it.data, 0, it.data.size)
+
+                        // Exibe o Bitmap em um ImageView (opcional)
+
+                        //imageview.setImageBitmap(bitmap)
+
+                        //publishMessage(bitmapdata.toBase64())
+
+                    }
+                }*/
 
                 if (fps != it.fps) {
                     fps = it.fps
@@ -120,6 +157,13 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             }
         }
 
+    fun ByteArray.toBase64(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            String(Base64.getEncoder().encode(this))
+        } else {
+            android.util.Base64.encodeToString(this, android.util.Base64.DEFAULT)
+        }
+
     private fun setupConnectionFactory() {
         try {
             factory.username = "guest"
@@ -142,16 +186,17 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             while (true) {
                 try {
                     val connection: Connection = factory.newConnection()
-                    val ch: Channel = connection.createChannel()
-                    ch.confirmSelect()
+                    channel = connection.createChannel()
+                    //channel.confirmSelect()
+                    channel.queueDeclare(RABBITMQ_QUEUE_NAME, false, false, false, null);
                     while (true) {
                         val message = queue.takeFirst()
                         try {
-                            ch.basicPublish("amq.fanout", "chat", null, message.toByteArray())
-                            Log.d("MainActivity", "[s] $message")
-                            ch.waitForConfirmsOrDie()
+                            channel.basicPublish("", RABBITMQ_QUEUE_NAME, null, message.toByteArray())
+                            //Log.d("RabbitMQ", "[s] $message")
+                            //channel.waitForConfirmsOrDie()
                         } catch (e: Exception) {
-                            Log.d("MainActivity", "[f] $message")
+                            Log.d("RabbitMQ", "[f] $message")
                             queue.putFirst(message)
                             throw e
                         }
@@ -159,7 +204,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                 } catch (e: InterruptedException) {
                     break
                 } catch (e: Exception) {
-                    Log.d("MainActivity", "Connection broken: " + e.javaClass.name)
+                    Log.d("RabbitMQ", "Connection broken: " + e.javaClass.name)
                     try {
                         Thread.sleep(5000) //sleep and then try again
                     } catch (e1: InterruptedException) {
@@ -173,7 +218,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
 
     private fun publishMessage(message: String) {
         try {
-            Log.d("", "[q] $message")
+            //Log.d("RabbitMQ", "[q] $message")
             queue.putLast(message)
         } catch (e: InterruptedException) {
             e.printStackTrace()
@@ -188,7 +233,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
              * @param oldState 解码器前一个状态
              * @param newState 解码器当前状态
              */
-            ToastUtils.showToast("Decoder State change from $oldState to $newState")
+            //ToastUtils.showToast("Decoder State change from $oldState to $newState")
             mainHandler.post {
                 channelVM.videoChannelInfo.value?.decoderState = newState
                 channelVM.refreshVideoChannelInfo()
@@ -201,7 +246,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         savedInstanceState: Bundle?,
     ): View? {
         val view = inflater.inflate(R.layout.video_channel_page, container, false)
-        view.setLayerType(View.LAYER_TYPE_NONE , null)
+        view.setLayerType(View.LAYER_TYPE_NONE, null)
         surfaceView = view.findViewById(R.id.surface_view)
         surfaceView.holder.addCallback(this)
         view.findViewById<Button>(R.id.startChannel).setOnClickListener(this)
@@ -211,6 +256,9 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         view.findViewById<Button>(R.id.closeSocket).setOnClickListener(this)
         view.findViewById<Button>(R.id.startBroadcast).setOnClickListener(this)
         view.findViewById<Button>(R.id.stopBroadcast).setOnClickListener(this)
+
+        imageview = view.findViewById<ImageView>(R.id.img)
+
         return view
     }
 
@@ -234,6 +282,16 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
 
         setupConnectionFactory()
         publishToAMQP()
+
+
+        /*channelVM.setupRabbitMqConnectionFactory(
+            RABBITMQ_USERNAME,
+            RABBITMQ_PASSWORD,
+            RABBITMQ_VIRTUAL_HOST,
+            RABBITMQ_HOST,
+            RABBITMQ_PORT,
+            RABBITMQ_QUEUE_NAME
+        )*/
     }
 
     private fun initVideoChannelInfo() {
@@ -250,7 +308,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             }
         }
 
-        mqttClient.connect()
+        //mqttClient.connect()
 
         channelVM.videoChannel?.addStreamDataListener(streamDataListener) ?: showDisconnectToast()
         this@VideoChannelFragment.setFragmentResultListener("ResetAllVideoChannel") { requestKey, _ ->
@@ -275,6 +333,11 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        publishThread?.interrupt()
+    }
+
     /**
      * Called when a view has been clicked.
      *
@@ -294,6 +357,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                     }
                 } ?: showDisconnectToast()
             }
+
             R.id.closeChannel -> {
                 channelVM.videoChannel?.let {
                     channelVM.videoChannel!!.closeChannel(object :
@@ -328,11 +392,13 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                     })
                 } ?: showDisconnectToast()
             }
+
             R.id.yuvScreenShot -> {
                 channelVM.videoChannel?.let {
                     handlerYUV()
                 } ?: showDisconnectToast()
             }
+
             R.id.startSocket -> {
                 channelVM.videoChannel?.let {
                     channelVM.videoChannel!!.startSocketServer(object :
@@ -369,6 +435,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                     })
                 } ?: showDisconnectToast()
             }
+
             R.id.closeSocket -> {
                 channelVM.videoChannel?.let {
                     channelVM.videoChannel!!.closeSocketServer(object :
@@ -402,12 +469,14 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                     })
                 } ?: showDisconnectToast()
             }
+
             R.id.startBroadcast -> {
                 if (serverSocket != null) {
                     serverSocket?.startBroadcast()
                     ToastUtils.showToast("Start Broadcast Frame Success")
                 }
             }
+
             R.id.stopBroadcast -> {
                 if (serverSocket != null) {
                     serverSocket?.stopBroadcast()
@@ -560,57 +629,6 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         videoDecoder?.onPause()
     }
 
-    override fun onReceive(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
-        if (++count == 30) {
-            count = 0
-            data?.let {
-                AsyncTask.execute(object : Runnable {
-                    override fun run() {
-                        var path: String =
-                            DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), PATH)
-                        val dir = File(path)
-                        if (!dir.exists() || !dir.isDirectory) {
-                            dir.mkdirs()
-                        }
-                        path = path + "/YUV_" + System.currentTimeMillis() + ".yuv"
-                        var fos: FileOutputStream? = null
-                        try {
-                            val file = File(path)
-                            if (file.exists()) {
-                                file.delete()
-                            }
-                            fos = FileOutputStream(file)
-                            fos.write(it, 0, it.size)
-                        } catch (e: Exception) {
-                            LogUtils.e(TAG, e.message)
-                        } finally {
-                            fos?.let {
-                                fos.flush()
-                                fos.close()
-                            }
-                        }
-                        saveYuvData(mediaFormat, data, width, height)
-                    }
-                })
-            }
-        }
-    }
-
-    private fun saveYuvData(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
-        data?.let {
-            mediaFormat?.let {
-                when (it.getInteger(MediaFormat.KEY_COLOR_FORMAT)) {
-                    0, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar -> {
-                        newSaveYuvDataToJPEG(data, width, height)
-                    }
-                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar -> {
-                        newSaveYuvDataToJPEG420P(data, width, height)
-                    }
-                }
-            }
-        }
-    }
-
     private fun handlerYUV() {
         if (!yuvScreenShot.isSelected) {
             yuvScreenShot.setText(R.string.btn_resume_video)
@@ -654,6 +672,58 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         }
     }
 
+    override fun onReceive(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
+        /*if (++count == 10) {
+            count = 0*/
+            data?.let {
+                AsyncTask.execute(object : Runnable {
+                    override fun run() {
+                        /*var path: String =
+                            DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), PATH)
+                        val dir = File(path)
+                        if (!dir.exists() || !dir.isDirectory) {
+                            dir.mkdirs()
+                        }
+                        path = path + "/YUV_" + System.currentTimeMillis() + ".yuv"
+                        var fos: FileOutputStream? = null
+                        try {
+                            val file = File(path)
+                            if (file.exists()) {
+                                file.delete()
+                            }
+                            fos = FileOutputStream(file)
+                            fos.write(it, 0, it.size)
+                        } catch (e: Exception) {
+                            LogUtils.e(TAG, e.message)
+                        } finally {
+                            fos?.let {
+                                fos.flush()
+                                fos.close()
+                            }
+                        }*/
+                        saveYuvData(mediaFormat, data, width, height)
+                    }
+                })
+            }
+        //}
+    }
+
+    private fun saveYuvData(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
+        data?.let {
+            mediaFormat?.let {
+                when (it.getInteger(MediaFormat.KEY_COLOR_FORMAT)) {
+                    0, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar -> {
+                        newSaveYuvDataToJPEG(data, width, height)
+                    }
+
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar -> {
+                        newSaveYuvDataToJPEG420P(data, width, height)
+                    }
+                }
+            }
+        }
+    }
+
     private fun newSaveYuvDataToJPEG420P(yuvFrame: ByteArray, width: Int, height: Int) {
         if (yuvFrame.size < width * height) {
             return
@@ -669,6 +739,8 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             yuvFrame[length + 2 * i] = v[i]
             yuvFrame[length + 2 * i + 1] = u[i]
         }
+
+        //publishMessage(yuvFrame.toBase64())
         screenShot(
             yuvFrame,
             DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), PATH),
@@ -692,6 +764,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             yuvFrame[length + 2 * i] = u[i]
             yuvFrame[length + 2 * i + 1] = v[i]
         }
+        //publishMessage(yuvFrame.toBase64())
         screenShot(
             yuvFrame,
             DiskUtil.getExternalCacheDirPath(ContextUtil.getContext(), PATH),
@@ -701,10 +774,10 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
     }
 
     private fun screenShot(buf: ByteArray, shotDir: String, width: Int, height: Int) {
-        val dir = File(shotDir)
+        /*val dir = File(shotDir)
         if (!dir.exists() || !dir.isDirectory) {
             dir.mkdirs()
-        }
+        }*/
         val yuvImage = YuvImage(
             buf,
             ImageFormat.NV21,
@@ -712,7 +785,30 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             height,
             null
         )
-        val outputFile: OutputStream
+
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, out)
+        val imageBytes = out.toByteArray()
+        val image = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        //bitmapToByteArray(image)
+
+        /*Gson().toJson(FrameUiModel(
+            bitmapToByteArray(image),
+            System.currentTimeMillis()
+        ))*/
+
+
+        channel.basicPublish("", RABBITMQ_QUEUE_NAME, null, bitmapToByteArray(image))
+        Log.d("RabbitMQ", "PUBLISH")
+
+    /*channelVM.publishMessage(
+            RABBITMQ_QUEUE_NAME,
+            Gson().toJson(FrameUiModel(
+                bitmapToByteArray(image),
+                System.currentTimeMillis()
+            ))
+        )*/
+        /*val outputFile: OutputStream
         val path = dir.toString() + "/ScreenShot_" + System.currentTimeMillis() + ".jpeg"
         outputFile = try {
             FileOutputStream(File(path))
@@ -720,6 +816,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
             LogUtils.e(logTag, "screenShot: new bitmap output file error: $e")
             return
         }
+
         yuvImage.compressToJpeg(
             Rect(
                 0,
@@ -727,13 +824,54 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                 width,
                 height
             ), 100, outputFile
-        )
-        try {
+        )*/
+
+        //publishMessage(yuvImage.yuvData.toString())
+
+        /*try {
             outputFile.close()
         } catch (e: IOException) {
             LogUtils.e(logTag, "test screenShot: compress yuv image error: ${e.message}")
+        }*/
+        //Message.obtain(mHandler, DISPLAY, path).sendToTarget()
+    }
+
+    /*fun outputStreamToByteArray(outputStream: OutputStream): ByteArray {
+        // Cria um ByteArrayOutputStream para coletar os bytes escritos no OutputStream
+        val byteArrayOutputStream = ByteArrayOutputStream()
+
+        // Lê os bytes do OutputStream e os escreve no ByteArrayOutputStream
+        val buffer = ByteArray(1024) // Use um tamanho de buffer adequado às suas necessidades
+        var bytesRead: Int
+        while (true) {
+            bytesRead = outputStream.read(buffer)
+            if (bytesRead == -1) {
+                break
+            }
+            byteArrayOutputStream.write(buffer, 0, bytesRead)
         }
-        Message.obtain(mHandler, DISPLAY, path).sendToTarget()
+
+        // Converte o ByteArrayOutputStream em um ByteArray
+        return byteArrayOutputStream.toByteArray()
+    }*/
+
+    //Está ocorrendo erro. image = null
+    fun byteArrayCompressJpg(buffer: YuvImage): ByteArray {
+        val out = ByteArrayOutputStream()
+        buffer.compressToJpeg(Rect(0, 0, width, height), 100, out)
+        val imageBytes = out.toByteArray()
+        val image = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        return bitmapToByteArray(image)
+    }
+
+    fun bitmapToByteArray(
+        bitmap: Bitmap,
+        format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+        quality: Int = 100
+    ): ByteArray {
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        bitmap.compress(format, quality, byteArrayOutputStream)
+        return byteArrayOutputStream.toByteArray()
     }
 
     private fun display(path: String) {
@@ -747,4 +885,19 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
     private fun showDisconnectToast() {
         ToastUtils.showToast("video stream disconnect")
     }
+
+    companion object {
+        const val RABBITMQ_USERNAME = "guest"
+        const val RABBITMQ_PASSWORD = "guest"
+        const val RABBITMQ_VIRTUAL_HOST = "/"
+        const val RABBITMQ_HOST = "54.232.143.5"
+        const val RABBITMQ_PORT = 5672
+        const val RABBITMQ_QUEUE_NAME = "frames-drone-jpg"
+    }
+
 }
+
+data class FrameUiModel (
+    val frame: ByteArray,
+    val timestamp: Long
+)

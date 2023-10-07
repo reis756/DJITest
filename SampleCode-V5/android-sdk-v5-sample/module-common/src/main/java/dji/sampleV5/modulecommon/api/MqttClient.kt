@@ -54,7 +54,10 @@ class MqttClient {
                 if (throwable != null) {
                     Log.v(TAG, " failure to publish")
                 } else {
-                    Log.v(TAG, " successful to publish: ${mqtt3Publish.payload}, topic = ${mqtt3Publish.topic} ")
+                    Log.v(
+                        TAG,
+                        " successful to publish: bytearray = ${payload.toString()} , payload = ${mqtt3Publish.payload}, topic = ${mqtt3Publish.topic} "
+                    )
                 }
             }
     }

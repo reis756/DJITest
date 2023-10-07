@@ -151,11 +151,11 @@ abstract class DJIMainActivity : AppCompatActivity() {
         }
 
         msdkManagerVM.lvProductConnectionState.observe(this) { resultPair ->
-            ToastUtils.showToast("Product: ${resultPair.second} ,ConnectionState:  ${resultPair.first}")
+            //ToastUtils.showToast("Product: ${resultPair.second} ,ConnectionState:  ${resultPair.first}")
         }
 
         msdkManagerVM.lvProductChanges.observe(this) { productId ->
-            ToastUtils.showToast("Product: $productId Changed")
+            //ToastUtils.showToast("Product: $productId Changed")
         }
 
         msdkManagerVM.lvInitProcess.observe(this) { processPair ->
