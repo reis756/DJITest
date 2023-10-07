@@ -35,7 +35,9 @@ import kotlinx.android.synthetic.main.frag_live_stream_page.*
 class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback {
     private val liveStreamVM: LiveStreamVM by viewModels()
     private var videoDecoder: IVideoDecoder? = null
+    private var otherVideoDecoder: IVideoDecoder? = null
     private lateinit var surfaceView: SurfaceView
+    private lateinit var otherSurfaceView: SurfaceView
     private lateinit var dialog: AlertDialog
     private lateinit var configDialog: AlertDialog
     private var checkedItem: Int = -1
@@ -78,7 +80,9 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
 
     private fun initView(view: View) {
         surfaceView = view.findViewById(R.id.live_stream_surface_view)
+        otherSurfaceView = view.findViewById(R.id.other_channel)
         surfaceView.holder.addCallback(this)
+        otherSurfaceView.holder.addCallback(this)
     }
 
     private fun initListener() {
@@ -537,12 +541,12 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
 
     private fun showSetLiveStreamQualityDialog() {
         val liveStreamQualities = liveStreamVM.getLiveStreamQualities()
-        liveStreamQualities?.let {
+        liveStreamQualities.let {
             val items = arrayOfNulls<String>(liveStreamQualities.size)
             for (i in liveStreamQualities.indices) {
                 items[i] = liveStreamQualities[i].name
             }
-            if (!items.isNullOrEmpty()) {
+            if (!items.isEmpty()) {
                 dialog = this@LiveStreamFragment.requireContext().let {
                     AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                         .setIcon(android.R.drawable.ic_menu_camera)
@@ -551,8 +555,8 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                         .setSingleChoiceItems(items, checkedItem) { _, i ->
                             checkedItem = i
                             ToastUtils.showToast(
-                                "选择所使用的bitRateMode： " + (items[i]
-                                    ?: "选择所使用的bitRateMode为null"),
+                                "bitRateMode： " + (items[i]
+                                    ?: "bitRateMode null"),
                             )
                         }
                         .setPositiveButton(R.string.ad_confirm) { dialog, _ ->
@@ -615,7 +619,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
 
     private fun showSetLiveStreamChannelTypeDialog() {
         val liveStreamChannelTypes = liveStreamVM.getLiveStreamChannelTypes()
-        liveStreamChannelTypes?.let {
+        liveStreamChannelTypes.let {
             val items = arrayOfNulls<String>(liveStreamChannelTypes.size)
             for (i in liveStreamChannelTypes.indices) {
                 items[i] = liveStreamChannelTypes[i].name
@@ -669,6 +673,13 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
     }
 
     private fun setVideChannel(videoChannel: VideoChannelType) {
+        setOtherVideoChannel(
+            if (videoChannel == VideoChannelType.PRIMARY_STREAM_CHANNEL)
+                VideoChannelType.SECONDARY_STREAM_CHANNEL
+            else
+                VideoChannelType.PRIMARY_STREAM_CHANNEL
+        )
+
         videoDecoder?.let {
             videoDecoder?.onPause()
             videoDecoder?.destroy()
@@ -692,6 +703,30 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
         liveStreamVM.setVideoChannel(videoChannel)
     }
 
+    private fun setOtherVideoChannel(videoChannel: VideoChannelType) {
+        otherVideoDecoder?.let {
+            otherVideoDecoder?.onPause()
+            otherVideoDecoder?.destroy()
+            otherVideoDecoder = null
+        }
+
+        if (otherVideoDecoder == null) {
+            otherVideoDecoder = VideoDecoder(
+                this@LiveStreamFragment.context,
+                videoChannel,
+                DecoderOutputMode.SURFACE_MODE,
+                otherSurfaceView.holder,
+                -1,
+                -1,
+                true
+            )
+        } else if (otherVideoDecoder?.decoderStatus == DecoderState.PAUSED) {
+            otherVideoDecoder?.onResume()
+        }
+
+        liveStreamVM.setVideoChannel(videoChannel)
+    }
+
     private fun showSetLiveStreamConfigDialog() {
         val liveStreamTypes = liveStreamVM.getLiveStreamTypes()
         liveStreamTypes.let {
@@ -709,7 +744,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                             checkedItem = i
                             isConfigSelected = true
                             ToastUtils.showToast(
-                                "选择的直播类型为： " + (items[i] ?: "直播类型为null"),
+                                "The selected live broadcast type is： " + (items[i] ?: "null"),
                             )
                         }
                         .setPositiveButton(getString(R.string.ad_confirm)) { dialog, _ ->
@@ -758,21 +793,6 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        //重新创建的时候销毁openGL
-//        videoDecoder?.let {
-//            it.destory()
-//        }
-//        videoDecoder = null
-//        videoDecoder = VideoDecoder(
-//            this@LiveStreamFragment.context,
-//            liveStreamVM.getVideoChannel(),
-//            DecoderOutputMode.SURFACE_MODE,
-//            surfaceView.holder,
-//            surfaceView.width,
-//            surfaceView.height,
-//            true
-//        )
-
         if (videoDecoder == null) {
             videoDecoder = VideoDecoder(
                 this@LiveStreamFragment.context,
@@ -789,6 +809,23 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
 
         curWidth = surfaceView.width
         curHeight = surfaceView.height
+
+        if (otherVideoDecoder == null) {
+            otherVideoDecoder = VideoDecoder(
+                this@LiveStreamFragment.context,
+                if (liveStreamVM.getVideoChannel() == VideoChannelType.PRIMARY_STREAM_CHANNEL)
+                    VideoChannelType.SECONDARY_STREAM_CHANNEL
+                else
+                    VideoChannelType.PRIMARY_STREAM_CHANNEL,
+                DecoderOutputMode.SURFACE_MODE,
+                surfaceView.holder,
+                -1,
+                -1,
+                true
+            )
+        } else if (otherVideoDecoder?.decoderStatus == DecoderState.PAUSED) {
+            otherVideoDecoder?.onResume()
+        }
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -807,11 +844,31 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
         }
         curWidth = width
         curHeight = height
+
+        if (otherVideoDecoder == null) {
+            otherVideoDecoder = VideoDecoder(
+                this@LiveStreamFragment.context,
+                if (liveStreamVM.getVideoChannel() == VideoChannelType.PRIMARY_STREAM_CHANNEL)
+                    VideoChannelType.SECONDARY_STREAM_CHANNEL
+                else
+                    VideoChannelType.PRIMARY_STREAM_CHANNEL,
+                DecoderOutputMode.SURFACE_MODE,
+                surfaceView.holder,
+                -1,
+                -1,
+                true
+            )
+        } else if (otherVideoDecoder?.decoderStatus == DecoderState.PAUSED) {
+            otherVideoDecoder?.onResume()
+        }
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         videoDecoder?.let {
             videoDecoder?.onPause()
+        }
+        otherVideoDecoder?.let {
+            otherVideoDecoder?.onPause()
         }
     }
 

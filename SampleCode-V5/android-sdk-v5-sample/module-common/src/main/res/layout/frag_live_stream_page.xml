@@ -152,6 +152,8 @@
 
         <SurfaceView
             android:id="@+id/live_stream_surface_view"
+            android:background="@drawable/logo_grey_scale"
+            android:foreground="@drawable/logo_grey_scale"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
