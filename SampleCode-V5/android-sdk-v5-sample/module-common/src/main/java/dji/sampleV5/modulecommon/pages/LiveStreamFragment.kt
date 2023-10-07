@@ -629,8 +629,8 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                         .setSingleChoiceItems(items, checkedItem) { _, i ->
                             checkedItem = i
                             ToastUtils.showToast(
-                                "选择使用所使用的channel： " + (items[i]
-                                    ?: "选择使用所使用的channel为null"),
+                                "Channel： " + (items[i]
+                                    ?: "channel null"),
                             )
                         }
                         .setPositiveButton(getString(R.string.ad_confirm)) { dialog, _ ->

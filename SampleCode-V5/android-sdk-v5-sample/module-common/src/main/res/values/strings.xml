@@ -12,7 +12,7 @@ More refer to the release notes." </string>
     <string name="tech_support_url">https://sdk-forum.dji.net/hc/en-us/requests/new</string>
 
     <string name="app_name_all">MSDK ALL</string>
-    <string name="app_name_aircraft">MSDK Aircraft</string>
+    <string name="app_name_aircraft">SSTOM</string>
     <string name="app_name_handheld">MSDK Handheld</string>
 
     <string name="item_key_value_title">Key/Value</string>

@@ -141,27 +141,41 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <LinearLayout
-        android:layout_width="match_parent"
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="0dp"
         android:layout_height="match_parent"
+        android:orientation="vertical"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintLeft_toRightOf="@+id/live_stream_button_list"
-        app:layout_constraintTop_toTopOf="parent"
-        android:orientation="vertical">
+        app:layout_constraintStart_toEndOf="@+id/live_stream_button_list"
+        app:layout_constraintTop_toTopOf="parent">
+
         <SurfaceView
             android:id="@+id/live_stream_surface_view"
             android:layout_width="match_parent"
-            android:layout_height="200dp"/>
+            android:layout_height="match_parent" />
 
         <TextView
             android:id="@+id/tv_live_stream_info"
             android:layout_width="400dp"
             android:layout_height="200dp"
             android:text="@string/n_a"
-            android:textColor="#3659F4"
-            android:background="@color/button_press"
-            android:layout_marginBottom="100dp"
-            app:layout_constraintLeft_toLeftOf="@+id/live_stream_surface_view"
-            app:layout_constraintTop_toBottomOf="@+id/live_stream_surface_view"/>
-    </LinearLayout>
+            android:textColor="@color/blue"
+            android:textAlignment="textEnd"
+            android:gravity="end"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <SurfaceView
+            android:id="@+id/other_channel"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:padding="2dp"
+            android:backgroundTint="@color/blue"
+            android:elevation="10dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
