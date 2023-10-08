@@ -5,7 +5,8 @@ import android.text.TextUtils
 import android.view.*
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
-import androidx.fragment.app.activityViewModels
+import androidx.core.graphics.drawable.IconCompat
+import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import com.hivemq.client.mqtt.mqtt3.Mqtt3Client
 import dji.sampleV5.modulecommon.R
@@ -40,6 +41,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
     private lateinit var configDialog: AlertDialog
     private var checkedItem: Int = -1
     private var isConfigSelected = false
+    private var showStreamInfo = true
     private var liveStreamType: LiveStreamType = LiveStreamType.UNKNOWN
     private var liveStreamBitrateMode: LiveVideoBitrateMode = LiveVideoBitrateMode.AUTO
     private var liveStreamQuality: StreamQuality = StreamQuality.UNKNOWN
@@ -96,6 +98,11 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
         btn_get_live_stream_bit_rate.setOnClickListener(this)
         btn_enable_audio.setOnClickListener(this)
         btn_disable_audio.setOnClickListener(this)
+        fbStartStop.setOnClickListener(this)
+        fbStreamingChannel.setOnClickListener(this)
+        fbStreamingConfig.setOnClickListener(this)
+        fbStreamingInfo.setOnClickListener(this)
+        fbStreamingQuality.setOnClickListener(this)
     }
 
     private fun initLiveStreamInfo() {
@@ -150,6 +157,37 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
 
     override fun onClick(v: View?) {
         when (v?.id) {
+            R.id.fbStartStop -> {
+                if (liveStreamVM.isStreaming()) {
+                    stopStream()
+                    fbStartStop.setImageResource(R.drawable.ic_play)
+                } else {
+                    startStream()
+                    fbStartStop.setImageResource(R.drawable.ic_stop)
+                }
+            }
+
+            R.id.fbStreamingChannel -> {
+                if (liveStreamVM.getVideoChannel() != VideoChannelType.PRIMARY_STREAM_CHANNEL) {
+                    judgeChannel(VideoChannelType.PRIMARY_STREAM_CHANNEL)
+                } else {
+                    judgeChannel(VideoChannelType.SECONDARY_STREAM_CHANNEL)
+                }
+            }
+
+            R.id.fbStreamingConfig -> {
+                showSetLiveStreamConfigDialog()
+            }
+
+            R.id.fbStreamingInfo -> {
+                showStreamInfo = !showStreamInfo
+                tv_live_stream_info.isVisible = showStreamInfo
+            }
+
+            R.id.fbStreamingQuality -> {
+                showSetLiveStreamQualityDialog()
+            }
+
             R.id.btn_set_live_stream_config -> {
                 showSetLiveStreamConfigDialog()
             }
@@ -161,20 +199,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
             }
 
             R.id.btn_start_live_stream -> {
-                liveStreamVM.startStream(object : CommonCallbacks.CompletionCallback {
-                    override fun onSuccess() {
-                        ToastUtils.showToast(StringUtils.getResStr(R.string.msg_start_live_stream_success))
-                    }
-
-                    override fun onFailure(error: IDJIError) {
-                        ToastUtils.showToast(
-                            StringUtils.getResStr(
-                                R.string.msg_start_live_stream_failed,
-                                error.description()
-                            )
-                        )
-                    }
-                })
+                startStream()
             }
 
             R.id.btn_stop_live_stream -> {
@@ -188,7 +213,6 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
             R.id.btn_get_live_stream_channel_type -> {
                 ToastUtils.showToast(liveStreamVM.getVideoChannel().name)
             }
-
 
             R.id.btn_set_live_stream_quality -> {
                 showSetLiveStreamQualityDialog()
@@ -222,6 +246,23 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
                 liveStreamVM.setLiveAudioEnabled(false)
             }
         }
+    }
+
+    private fun startStream() {
+        liveStreamVM.startStream(object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                ToastUtils.showToast(StringUtils.getResStr(R.string.msg_start_live_stream_success))
+            }
+
+            override fun onFailure(error: IDJIError) {
+                ToastUtils.showToast(
+                    StringUtils.getResStr(
+                        R.string.msg_start_live_stream_failed,
+                        error.description()
+                    )
+                )
+            }
+        })
     }
 
     private fun stopStream() {
