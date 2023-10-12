@@ -29,6 +29,12 @@
         android:label="live_stream_page"
         tools:layout="@layout/frag_live_stream_page"/>
 
+    <fragment
+        android:id="@+id/key_default_layout_test_page"
+        android:name="dji.sampleV5.modulecommon.pages.DefaultLayoutTestFragment"
+        android:label="live_stream_page"
+        tools:layout="@layout/frag_default_layout_test"/>
+
 
     <fragment
         android:id="@+id/key_login_account_page"
