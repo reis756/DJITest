@@ -17,7 +17,6 @@ class CommonFragmentPageInfoFactory : IFragmentPageInfoFactory {
             items.add(FragmentPageItem(R.id.key_value_page, R.string.item_key_value_title, R.string.item_key_value_description))
             items.add(FragmentPageItem(R.id.multi_video_decoding_page, R.string.item_multi_video_decoding_title, R.string.item_multi_video_decoding_description))
             items.add(FragmentPageItem(R.id.media_playback_page, R.string.item_media_playback_title, R.string.item_media_playback_description))
-            items.add(FragmentPageItem(R.id.key_live_stream_page, R.string.item_live_stream_title, R.string.item_live_stream_description))
             items.add(FragmentPageItem(R.id.key_default_layout_test_page, R.string.item_live_stream_title, R.string.item_live_stream_description))
             items.add(FragmentPageItem(R.id.key_login_account_page, R.string.item_login_account_title, R.string.item_login_account_description))
             items.add(FragmentPageItem(R.id.key_log_info_page, R.string.item_log_info_title, R.string.item_log_info_description))
