@@ -160,7 +160,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        return inflater.inflate(R.layout.frag_live_stream_page, container, false)
+        return inflater.inflate(R.layout.frag_default_layout_test, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -300,9 +300,9 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         secondaryFPVWidget.setOnClickListener { v: View? -> swapVideoSource() }
         initChannelStateListener()
 
-        if (settingWidget != null) {
+        /*if (settingWidget != null) {
             settingWidget.setOnClickListener { v: View? ->  }
-        }
+        }*/
 
         val systemStatusWidget = topBarPanel!!.systemStatusWidget
         systemStatusWidget?.setOnClickListener { v: View? -> systemStatusListPanelWidget!!.toggleVisibility() }
