@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.SurfaceHolder
-import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -12,7 +11,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
-import com.hivemq.client.mqtt.mqtt3.Mqtt3Client
 import dji.sampleV5.modulecommon.R
 import dji.sampleV5.modulecommon.models.LiveStreamVM
 import dji.sdk.keyvalue.value.common.CameraLensType
@@ -20,10 +18,6 @@ import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.video.channel.VideoChannelState
 import dji.v5.common.video.channel.VideoChannelType
-import dji.v5.common.video.decoder.DecoderOutputMode
-import dji.v5.common.video.decoder.DecoderState
-import dji.v5.common.video.decoder.VideoDecoder
-import dji.v5.common.video.interfaces.IVideoDecoder
 import dji.v5.common.video.interfaces.VideoChannelStateChangeListener
 import dji.v5.common.video.stream.PhysicalDevicePosition
 import dji.v5.common.video.stream.StreamSource
@@ -54,7 +48,6 @@ import dji.v5.ux.core.widget.fpv.FPVStreamSourceListener
 import dji.v5.ux.core.widget.fpv.FPVWidget
 import dji.v5.ux.core.widget.hsi.HorizontalSituationIndicatorWidget
 import dji.v5.ux.core.widget.hsi.PrimaryFlightDisplayWidget
-import dji.v5.ux.core.widget.setting.SettingWidget
 import dji.v5.ux.map.MapWidget
 import dji.v5.ux.mapkit.core.maps.DJIMap
 import dji.v5.ux.training.simulatorcontrol.SimulatorControlWidget
@@ -65,26 +58,13 @@ import dji.v5.ux.visualcamera.zoom.FocalZoomWidget
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.functions.Consumer
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_disable_audio
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_enable_audio
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_get_live_stream_bit_rate
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_get_live_stream_bit_rate_mode
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_get_live_stream_channel_type
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_get_live_stream_config
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_get_live_stream_quality
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_set_live_stream_bit_rate
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_set_live_stream_bit_rate_mode
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_set_live_stream_channel_type
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_set_live_stream_config
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_set_live_stream_quality
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_start_live_stream
-import kotlinx.android.synthetic.main.frag_live_stream_page.btn_stop_live_stream
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStartStop
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingChannel
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingConfig
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingInfo
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingQuality
 import kotlinx.android.synthetic.main.frag_live_stream_page.tv_live_stream_info
+import kotlinx.android.synthetic.main.video_play_page.surfaceView
 import java.util.concurrent.TimeUnit
 
 /**
@@ -96,8 +76,6 @@ import java.util.concurrent.TimeUnit
  */
 class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback {
     private val liveStreamVM: LiveStreamVM by viewModels()
-    private var videoDecoder: IVideoDecoder? = null
-    private lateinit var surfaceView: SurfaceView
     private lateinit var dialog: AlertDialog
     private lateinit var configDialog: AlertDialog
     private var checkedItem: Int = -1
@@ -107,8 +85,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private var liveStreamBitrateMode: LiveVideoBitrateMode = LiveVideoBitrateMode.AUTO
     private var liveStreamQuality: StreamQuality = StreamQuality.UNKNOWN
     private val msg = "input is null"
-
-    private lateinit var client: Mqtt3Client
 
     var fps: Int = -1
     var vbps: Int = -1
@@ -140,7 +116,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private lateinit var ndviCameraPanel: CameraNDVIPanelWidget
     private lateinit var visualCameraPanel: CameraVisiblePanelWidget
     private lateinit var focalZoomWidget: FocalZoomWidget
-    private lateinit var settingWidget: SettingWidget
     private lateinit var mapWidget: MapWidget
     private lateinit var topBarPanel: TopBarPanelWidget
     private lateinit var fpvParentView: ConstraintLayout
@@ -160,7 +135,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        return inflater.inflate(R.layout.frag_live_stream_page, container, false)
+        return inflater.inflate(R.layout.frag_default_layout_test, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -199,8 +174,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
 
         MediaDataCenter.getInstance().videoStreamManager.addStreamSourcesListener { sources: List<StreamSource>? ->
-            activity?.runOnUiThread(
-                Runnable { updateFPVWidgetSource(sources) })
+            activity?.runOnUiThread { updateFPVWidgetSource(sources) }
         }
         primaryFpvWidget.setOnFPVStreamSourceListener(object : FPVStreamSourceListener {
             override fun onStreamSourceUpdated(
@@ -223,8 +197,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         }
         mapWidget.onCreate(savedInstanceState)
 
-
-        initView(view)
         initListener()
         initLiveStreamInfo()
     }
@@ -271,26 +243,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         super.onPause()
     }
 
-    private fun initView(view: View) {
-        surfaceView = view.findViewById(R.id.live_stream_surface_view)
-        surfaceView.holder.addCallback(this)
-    }
-
     private fun initListener() {
-        btn_set_live_stream_config.setOnClickListener(this)
-        btn_get_live_stream_config.setOnClickListener(this)
-        btn_start_live_stream.setOnClickListener(this)
-        btn_stop_live_stream.setOnClickListener(this)
-        btn_set_live_stream_channel_type.setOnClickListener(this)
-        btn_get_live_stream_channel_type.setOnClickListener(this)
-        btn_set_live_stream_quality.setOnClickListener(this)
-        btn_get_live_stream_quality.setOnClickListener(this)
-        btn_set_live_stream_bit_rate_mode.setOnClickListener(this)
-        btn_get_live_stream_bit_rate_mode.setOnClickListener(this)
-        btn_set_live_stream_bit_rate.setOnClickListener(this)
-        btn_get_live_stream_bit_rate.setOnClickListener(this)
-        btn_enable_audio.setOnClickListener(this)
-        btn_disable_audio.setOnClickListener(this)
         fbStartStop.setOnClickListener(this)
         fbStreamingChannel.setOnClickListener(this)
         fbStreamingConfig.setOnClickListener(this)
@@ -300,15 +253,11 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         secondaryFPVWidget.setOnClickListener { v: View? -> swapVideoSource() }
         initChannelStateListener()
 
-        if (settingWidget != null) {
-            settingWidget.setOnClickListener { v: View? ->  }
-        }
+        val systemStatusWidget = topBarPanel.systemStatusWidget
+        systemStatusWidget?.setOnClickListener { v: View? -> systemStatusListPanelWidget.toggleVisibility() }
 
-        val systemStatusWidget = topBarPanel!!.systemStatusWidget
-        systemStatusWidget?.setOnClickListener { v: View? -> systemStatusListPanelWidget!!.toggleVisibility() }
-
-        val simulatorIndicatorWidget = topBarPanel!!.simulatorIndicatorWidget
-        simulatorIndicatorWidget?.setOnClickListener { v: View? -> simulatorControlWidget!!.toggleVisibility() }
+        val simulatorIndicatorWidget = topBarPanel.simulatorIndicatorWidget
+        simulatorIndicatorWidget?.setOnClickListener { v: View? -> simulatorControlWidget.toggleVisibility() }
     }
 
     private fun initLiveStreamInfo() {
@@ -406,7 +355,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                     val primaryStreamSource =
                         primaryChannel.streamSource
                     if (VideoChannelState.ON == to && primaryStreamSource != null) {
-                        activity?.runOnUiThread(Runnable {
+                        activity?.runOnUiThread({
                             primaryFpvWidget.updateVideoSource(
                                 primaryStreamSource,
                                 VideoChannelType.PRIMARY_STREAM_CHANNEL
@@ -422,7 +371,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                     val secondaryStreamSource =
                         secondaryChannel.streamSource
                     if (VideoChannelState.ON == to && secondaryStreamSource != null) {
-                        activity?.runOnUiThread(Runnable {
+                        activity?.runOnUiThread( {
                             secondaryFPVWidget.updateVideoSource(
                                 secondaryStreamSource,
                                 VideoChannelType.SECONDARY_STREAM_CHANNEL
@@ -513,8 +462,8 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             if (devicePosition == PhysicalDevicePosition.NOSE) View.INVISIBLE else View.VISIBLE
         focusExposureSwitchWidget.visibility =
             if (devicePosition == PhysicalDevicePosition.NOSE) View.INVISIBLE else View.VISIBLE
-        cameraControlsWidget.visibility =
-            if (devicePosition == PhysicalDevicePosition.NOSE) View.INVISIBLE else View.VISIBLE
+        /*cameraControlsWidget.visibility =
+            if (devicePosition == PhysicalDevicePosition.NOSE) View.INVISIBLE else View.VISIBLE*/
         focalZoomWidget.visibility =
             if (devicePosition == PhysicalDevicePosition.NOSE) View.INVISIBLE else View.VISIBLE
         horizontalSituationIndicatorWidget.setSimpleModeEnable(devicePosition != PhysicalDevicePosition.NOSE)
@@ -571,7 +520,13 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             }
 
             R.id.fbStreamingConfig -> {
-                showSetLiveStreamConfigDialog()
+                //showSetLiveStreamConfigDialog()
+                liveStreamVM.setRTSPConfig(
+                    "123456",
+                    "123",
+                    "8554".toInt()
+                )
+                ToastUtils.showToast("RTSP config success")
             }
 
             R.id.fbStreamingInfo -> {
@@ -833,7 +788,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             )
         }
 
-        configDialog = this@DefaultLayoutTestFragment.requireContext()?.let {
+        configDialog = this@DefaultLayoutTestFragment.requireContext().let {
             AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                 .setIcon(android.R.drawable.ic_menu_camera)
                 .setTitle(R.string.ad_set_live_stream_gb28181_config)
@@ -900,7 +855,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             etAgoraUid.setText(configs[2].toCharArray(), 0, configs[2].length)
         }
 
-        configDialog = this@DefaultLayoutTestFragment.requireContext()?.let {
+        configDialog = this@DefaultLayoutTestFragment.requireContext().let {
             AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                 .setIcon(android.R.drawable.ic_menu_camera)
                 .setTitle(R.string.ad_set_live_stream_agora_config)
@@ -934,7 +889,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
     private fun showSetLiveStreamBitrateDialog() {
         val editText = EditText(this@DefaultLayoutTestFragment.requireContext())
-        dialog = this@DefaultLayoutTestFragment.requireContext()?.let {
+        dialog = this@DefaultLayoutTestFragment.requireContext().let {
             AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                 .setIcon(android.R.drawable.ic_menu_camera)
                 .setTitle(R.string.ad_set_live_stream_bit_rate)
@@ -973,12 +928,12 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
     private fun showSetLiveStreamQualityDialog() {
         val liveStreamQualities = liveStreamVM.getLiveStreamQualities()
-        liveStreamQualities?.let {
+        liveStreamQualities.let {
             val items = arrayOfNulls<String>(liveStreamQualities.size)
             for (i in liveStreamQualities.indices) {
                 items[i] = liveStreamQualities[i].name
             }
-            if (!items.isNullOrEmpty()) {
+            if (!items.isEmpty()) {
                 dialog = this@DefaultLayoutTestFragment.requireContext().let {
                     AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                         .setIcon(android.R.drawable.ic_menu_camera)
@@ -1012,12 +967,12 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
     private fun showSetLiveStreamBitRateModeDialog() {
         val liveStreamBitrateModes = liveStreamVM.getLiveStreamBitRateModes()
-        liveStreamBitrateModes?.let {
+        liveStreamBitrateModes.let {
             val items = arrayOfNulls<String>(liveStreamBitrateModes.size)
             for (i in liveStreamBitrateModes.indices) {
                 items[i] = liveStreamBitrateModes[i].name
             }
-            if (!items.isNullOrEmpty()) {
+            if (!items.isEmpty()) {
                 dialog = this@DefaultLayoutTestFragment.requireContext().let {
                     AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                         .setIcon(android.R.drawable.ic_menu_camera)
@@ -1051,12 +1006,12 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
     private fun showSetLiveStreamChannelTypeDialog() {
         val liveStreamChannelTypes = liveStreamVM.getLiveStreamChannelTypes()
-        liveStreamChannelTypes?.let {
+        liveStreamChannelTypes.let {
             val items = arrayOfNulls<String>(liveStreamChannelTypes.size)
             for (i in liveStreamChannelTypes.indices) {
                 items[i] = liveStreamChannelTypes[i].name
             }
-            if (!items.isNullOrEmpty()) {
+            if (!items.isEmpty()) {
                 dialog = this@DefaultLayoutTestFragment.requireContext().let {
                     AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                         .setIcon(android.R.drawable.ic_dialog_email)
@@ -1105,26 +1060,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     }
 
     private fun setVideChannel(videoChannel: VideoChannelType) {
-        videoDecoder?.let {
-            videoDecoder?.onPause()
-            videoDecoder?.destroy()
-            videoDecoder = null
-        }
-
-        if (videoDecoder == null) {
-            videoDecoder = VideoDecoder(
-                this@DefaultLayoutTestFragment.context,
-                videoChannel,
-                DecoderOutputMode.SURFACE_MODE,
-                surfaceView.holder,
-                -1,
-                -1,
-                true
-            )
-        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
-            videoDecoder?.onResume()
-        }
-
         liveStreamVM.setVideoChannel(videoChannel)
     }
 
@@ -1135,7 +1070,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             for (i in liveStreamTypes.indices) {
                 items[i] = liveStreamTypes[i].name
             }
-            if (!items.isNullOrEmpty()) {
+            if (!items.isEmpty()) {
                 dialog = this@DefaultLayoutTestFragment.requireContext().let {
                     AlertDialog.Builder(it, R.style.Base_ThemeOverlay_AppCompat_Dialog_Alert)
                         .setIcon(android.R.drawable.ic_input_get)
@@ -1172,7 +1107,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     }
 
     private fun setLiveStreamConfig(liveStreamtype: LiveStreamType) {
-        liveStreamtype?.let {
+        liveStreamtype.let {
             when (liveStreamtype) {
                 LiveStreamType.RTMP -> {
                     showSetLiveStreamRtmpConfigDialog()
@@ -1209,53 +1144,20 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 //            true
 //        )
 
-        if (videoDecoder == null) {
-            videoDecoder = VideoDecoder(
-                this@DefaultLayoutTestFragment.context,
-                liveStreamVM.getVideoChannel(),
-                DecoderOutputMode.SURFACE_MODE,
-                surfaceView.holder,
-                -1,
-                -1,
-                true
-            )
-        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
-            videoDecoder?.onResume()
-        }
-
         curWidth = surfaceView.width
         curHeight = surfaceView.height
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        if (videoDecoder == null) {
-            videoDecoder = VideoDecoder(
-                this@DefaultLayoutTestFragment.context,
-                liveStreamVM.getVideoChannel(),
-                DecoderOutputMode.SURFACE_MODE,
-                surfaceView.holder,
-                -1,
-                -1,
-                true
-            )
-        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
-            videoDecoder?.onResume()
-        }
         curWidth = width
         curHeight = height
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        videoDecoder?.let {
-            videoDecoder?.onPause()
-        }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        videoDecoder?.let {
-            it.destroy()
-        }
         if (isStreaming) {
             stopStream()
         }
