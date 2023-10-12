@@ -42,6 +42,7 @@ android {
 
 dependencies {
     /** <-----------------sample所需--------------------> **/
+    implementation project(path: ':uxsdk')
     api deps.appcompat
     api deps.constraintLayout
     api deps.aacCommon

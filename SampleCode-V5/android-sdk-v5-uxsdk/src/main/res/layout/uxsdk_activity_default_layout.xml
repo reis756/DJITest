@@ -289,16 +289,4 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-<!--    <FrameLayout-->
-<!--        android:layout_width="@dimen/uxsdk_510_dp"-->
-<!--        android:layout_height="match_parent"-->
-<!--        android:layout_gravity="end">-->
-
-<!--        <ViewStub-->
-<!--            android:id="@+id/manual_right_nav_setting_stub"-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="match_parent"-->
-<!--            android:layout="@layout/uxsdk_viewstub_layout_manual_right_nav_setting" />-->
-<!--    </FrameLayout>-->
-
 </androidx.drawerlayout.widget.DrawerLayout>
