@@ -1129,20 +1129,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        //重新创建的时候销毁openGL
-//        videoDecoder?.let {
-//            it.destory()
-//        }
-//        videoDecoder = null
-//        videoDecoder = VideoDecoder(
-//            this@LiveStreamFragment.context,
-//            liveStreamVM.getVideoChannel(),
-//            DecoderOutputMode.SURFACE_MODE,
-//            surfaceView.holder,
-//            surfaceView.width,
-//            surfaceView.height,
-//            true
-//        )
 
         curWidth = surfaceView.width
         curHeight = surfaceView.height
