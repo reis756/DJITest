@@ -2,27 +2,44 @@ package dji.sampleV5.modulecommon
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageInfo
+import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.RemoteException
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import de.blinkt.openvpn.OpenVpnApi
+import de.blinkt.openvpn.core.OpenVPNService
+import de.blinkt.openvpn.core.OpenVPNThread
+import de.blinkt.openvpn.core.VpnStatus
 import dji.sampleV5.modulecommon.models.BaseMainActivityVm
 import dji.sampleV5.modulecommon.models.MSDKInfoVm
 import dji.sampleV5.modulecommon.models.MSDKManagerVM
 import dji.sampleV5.modulecommon.models.globalViewModels
-import dji.sampleV5.modulecommon.util.Helper
 import dji.v5.utils.common.LogUtils
 import dji.v5.utils.common.PermissionUtil
 import dji.v5.utils.common.StringUtils
 import dji.v5.utils.common.ToastUtils
+import dji.v5.utils.common.ToastUtils.showToast
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import kotlinx.android.synthetic.main.activity_main.*
+import java.io.BufferedReader
+import java.io.IOException
+import java.io.InputStreamReader
+
 
 /**
  * Class Description
@@ -62,6 +79,37 @@ abstract class DJIMainActivity : AppCompatActivity() {
     private val handler: Handler = Handler(Looper.getMainLooper())
     private val disposable = CompositeDisposable()
 
+    private var connection: CheckInternetConnection? = null
+
+    private var vpnStart = false
+
+    private var vpnUser: VPNUser? = null
+
+    private lateinit var vpnUserListAdapter: VpnUserListAdapter
+
+    private var broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            try {
+                setStatus(intent.getStringExtra("state"))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                var duration = intent.getStringExtra("duration")
+                var lastPacketReceive = intent.getStringExtra("lastPacketReceive")
+                var byteIn = intent.getStringExtra("byteIn")
+                var byteOut = intent.getStringExtra("byteOut")
+                if (duration == null) duration = "00:00:00"
+                if (lastPacketReceive == null) lastPacketReceive = "0"
+                if (byteIn == null) byteIn = " "
+                if (byteOut == null) byteOut = " "
+                updateConnectionStatus(duration, lastPacketReceive, byteIn, byteOut)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     abstract fun prepareUxActivity()
 
     abstract fun prepareTestingToolsActivity()
@@ -77,6 +125,170 @@ abstract class DJIMainActivity : AppCompatActivity() {
         initMSDKInfoView()
         observeSDKManagerStatus()
         checkPermissionAndRequest()
+
+        connection = CheckInternetConnection()
+        setupAdapter()
+
+        vpnBtn.setOnClickListener {
+            if (vpnStart) {
+                confirmDisconnect()
+            } else {
+                prepareVpn()
+            }
+        }
+
+        isServiceRunning()
+        VpnStatus.initLogCache(cacheDir)
+    }
+
+    private fun isServiceRunning() {
+        setStatus(OpenVPNService.getStatus())
+    }
+
+    fun setStatus(connectionState: String?) {
+        if (connectionState != null) when (connectionState) {
+            "DISCONNECTED" -> {
+                status("connect")
+                vpnStart = false
+                OpenVPNService.setDefaultStatus()
+                logTv.text = "VPN Disconnected"
+            }
+
+            "CONNECTED" -> {
+                vpnStart = true // it will use after restart this activity
+                status("connected")
+                logTv.text = "VPN Connected"
+            }
+
+            "WAIT" -> logTv.text = "VPN waiting for server connection!!"
+            "AUTH" -> logTv.text = "VPN server authenticating!!"
+            "RECONNECTING" -> {
+                status("connecting")
+                logTv.text = "VPN Reconnecting..."
+            }
+
+            "NONETWORK" -> logTv.text = "VPN No network connection"
+        }
+    }
+
+    private fun status(status: String) {
+        when (status) {
+            "connect" -> {
+                vpnBtn.text = getString(R.string.connect)
+            }
+
+            "connecting" -> {
+                vpnBtn.text = getString(R.string.connecting)
+            }
+
+            "connected" -> {
+                vpnBtn.text = getString(R.string.disconnect)
+            }
+
+            "tryDifferentServer" -> {
+                vpnBtn.text = "Try Different\nServer"
+            }
+
+            "loading" -> {
+                vpnBtn.text = "Loading Server.."
+            }
+
+            "invalidDevice" -> {
+                vpnBtn.text = "Invalid Device"
+            }
+
+            "authenticationCheck" -> {
+                vpnBtn.text = "Authentication \n Checking..."
+            }
+        }
+    }
+
+    private fun confirmDisconnect() {
+        val builder = AlertDialog.Builder(this)
+        builder.setMessage(getString(R.string.connection_close_confirm))
+        builder.setPositiveButton(getString(R.string.yes)) { dialog, id ->
+            stopVpn()
+        }
+        builder.setNegativeButton(getString(R.string.no)) { dialog, id ->
+        }
+
+        val dialog = builder.create()
+        dialog.show()
+    }
+
+    private fun prepareVpn() {
+        if (!vpnStart) {
+            if (getInternetStatus()) {
+                val intent = VpnService.prepare(this)
+                if (intent != null) {
+                    startActivityForResult(intent, 1)
+                } else {
+                    startVpn()
+                }
+
+                status("connecting")
+            } else {
+                showToast("you have no internet connection !!")
+            }
+        } else if (stopVpn()) {
+            showToast("Disconnect Successfully")
+        }
+    }
+
+    private fun startVpn() {
+        try {
+            val conf = vpnUser?.ovpn?.let { assets.open(it) }
+            val isr = InputStreamReader(conf)
+            val br = BufferedReader(isr)
+            var config = ""
+            var line: String?
+            while (true) {
+                line = br.readLine()
+                if (line == null) break
+                config += "$line\n"
+            }
+
+            br.readLine()
+            OpenVpnApi.startVpn(
+                this,
+                config,
+                vpnUser?.alias,
+                vpnUser?.ovpnUserName,
+                vpnUser?.ovpnUserPassword
+            )
+
+            logTv.text = "VPN Connecting..."
+            vpnStart = true
+        } catch (e: IOException) {
+            e.printStackTrace()
+        } catch (e: RemoteException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun stopVpn(): Boolean {
+        try {
+            OpenVPNThread.stop()
+            status("connect")
+            vpnStart = false
+            return true
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+        }
+        return false
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == Activity.RESULT_OK) {
+            startVpn()
+        } else {
+            showToast("Permission Deny !! ")
+        }
+    }
+
+    private fun getInternetStatus(): Boolean {
+        return connection!!.netCheck(this)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -91,6 +303,96 @@ abstract class DJIMainActivity : AppCompatActivity() {
         if (checkPermission()) {
             handleAfterPermissionPermitted()
         }
+
+        LocalBroadcastManager.getInstance(this)
+            .registerReceiver(broadcastReceiver, IntentFilter("connectionState"))
+    }
+
+    private fun setupAdapter() {
+        vpnUserListAdapter = VpnUserListAdapter(getVpnUserList().toList(), object : VpnUserListAdapter.Listener {
+            override fun onUserClick(vpnUser: VPNUser) {
+                newServer(vpnUser)
+            }
+        })
+
+        with(rvVpnUsers) {
+            adapter = vpnUserListAdapter
+            layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
+            setHasFixedSize(false)
+            isNestedScrollingEnabled = false
+        }
+    }
+
+    fun updateConnectionStatus(
+        duration: String,
+        lastPacketReceive: String,
+        byteIn: String,
+        byteOut: String
+    ) {
+        /*binding.durationTv.setText("Duration: $duration")
+        binding.lastPacketReceiveTv.setText("Packet Received: $lastPacketReceive second ago")
+        binding.byteInTv.setText("Bytes In: $byteIn")
+        binding.byteOutTv.setText("Bytes Out: $byteOut")*/
+    }
+
+    private fun getVpnUserList(): MutableList<VPNUser> {
+        val vpnUsers = mutableListOf<VPNUser>()
+        vpnUsers.add(
+            VPNUser(
+                "SSTDrone",
+                "192.168.8.10",
+                "sstdrone.ovpn",
+                "SSTDrone",
+                "sstdrone"
+            )
+        )
+        vpnUsers.add(
+            VPNUser(
+                "SSTDrone1",
+                "192.168.8.11",
+                "sstdrone1.ovpn",
+                "SSTDrone1",
+                "sstdrone"
+            )
+        )
+        vpnUsers.add(
+            VPNUser(
+                "SSTDrone2",
+                "192.168.8.12",
+                "sstdrone2.ovpn",
+                "SSTDrone2",
+                "sstdrone"
+            )
+        )
+        vpnUsers.add(
+            VPNUser(
+                "SSTDrone3",
+                "192.168.8.13",
+                "sstdrone3.ovpn",
+                "SSTDrone3",
+                "sstdrone"
+            )
+        )
+
+        vpnUsers.add(
+            VPNUser(
+                "SSTDrone4",
+                "192.168.8.14",
+                "sstdrone4.ovpn",
+                "SSTDrone4",
+                "sstdrone"
+            )
+        )
+        return vpnUsers
+    }
+
+    private fun newServer(vpnUser: VPNUser?) {
+        this.vpnUser = vpnUser
+        if (vpnStart) {
+            stopVpn()
+        }
+
+        prepareVpn()
     }
 
     private fun handleAfterPermissionPermitted() {
@@ -101,30 +403,13 @@ abstract class DJIMainActivity : AppCompatActivity() {
     private fun initMSDKInfoView() {
         ToastUtils.init(this)
         msdkInfoVm.msdkInfo.observe(this) {
-            text_view_version.text = StringUtils.getResStr(R.string.sdk_version, it.SDKVersion + " " + it.buildVer)
+            val pInfo: PackageInfo =
+                packageManager.getPackageInfo(packageName, 0)
+            val version = pInfo.versionName
+            text_view_version.text = StringUtils.getResStr(R.string.sdk_version, version)
             text_view_product_name.text = StringUtils.getResStr(R.string.product_name, it.productType.name)
             text_view_package_product_category.text = StringUtils.getResStr(R.string.package_product_category, it.packageProductCategory)
-            text_view_is_debug.text = StringUtils.getResStr(R.string.is_sdk_debug, it.isDebug)
             text_core_info.text = it.coreInfo.toString()
-        }
-        baseMainActivityVm.sdkNews.observe(this) {
-            item_news_msdk.setTitle(StringUtils.getResStr(it.title))
-            item_news_msdk.setDescription(StringUtils.getResStr(it.description))
-            item_news_msdk.setDate(it.date)
-
-            item_news_uxsdk.setTitle(StringUtils.getResStr(it.title))
-            item_news_uxsdk.setDescription(StringUtils.getResStr(it.description))
-            item_news_uxsdk.setDate(it.date)
-        }
-
-        icon_sdk_forum.setOnClickListener {
-            Helper.startBrowser(this, StringUtils.getResStr(R.string.sdk_forum_url))
-        }
-        icon_release_node.setOnClickListener {
-            Helper.startBrowser(this, StringUtils.getResStr(R.string.release_node_url))
-        }
-        icon_tech_support.setOnClickListener {
-            Helper.startBrowser(this, StringUtils.getResStr(R.string.tech_support_url))
         }
         view_base_info.setOnClickListener {
             baseMainActivityVm.doPairing {
@@ -166,7 +451,6 @@ abstract class DJIMainActivity : AppCompatActivity() {
             ToastUtils.showToast("Database Download Progress current: ${resultPair.first}, total: ${resultPair.second}")
         }
     }
-
 
     fun <T> enableDefaultLayout(cl: Class<T>) {
         enableShowCaseButton(default_layout_button, cl)
@@ -217,6 +501,11 @@ abstract class DJIMainActivity : AppCompatActivity() {
 
     private fun requestPermission() {
         requestPermissionLauncher.launch(permissionArray.toArray(arrayOf()))
+    }
+
+    override fun onPause() {
+        super.onPause()
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(broadcastReceiver)
     }
 
     override fun onDestroy() {

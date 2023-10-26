@@ -13,3 +13,4 @@ project(':sample-module-aircraft').projectDir = new File(rootProject.projectDir,
 
 include ':uxsdk'// uxsdk模块
 project(':uxsdk').projectDir = new File(rootProject.projectDir, '../android-sdk-v5-uxsdk')
+include ':vpnLib'

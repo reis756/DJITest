@@ -105,6 +105,7 @@ More refer to the release notes." </string>
     <string name="sdk_version">Version: %1$s</string>
     <string name="product_name">Product Name: %1$s</string>
     <string name="is_sdk_debug">Is SDK Debug: %1$s</string>
+    <string name="vpn_status_log">VPN Status</string>
     <string name="registration_status">Registration Status: %1$s</string>
     <string name="package_product_category">Package Category: %1$s</string>
     <string name="remote_controller">Remote Controller Only</string>
@@ -457,5 +458,10 @@ More refer to the release notes." </string>
     <string name="unknown_package_names">
         Some of the specified package names do not correspond to any installed packages.
     </string>
+    <string name="select_these_vpn_users">VPN Users</string>
+    <string name="vpn_connect">VPN Connect</string>
+    <string name="connection_close_confirm">Would you like to cancel the current VPN Connection?</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
 
 </resources>

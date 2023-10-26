@@ -43,6 +43,7 @@ android {
 dependencies {
     /** <-----------------sample所需--------------------> **/
     implementation project(path: ':uxsdk')
+    implementation project(path: ':vpnLib')
     api deps.appcompat
     api deps.constraintLayout
     api deps.aacCommon
