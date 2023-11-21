@@ -58,6 +58,12 @@ import dji.v5.ux.visualcamera.zoom.FocalZoomWidget
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.functions.Consumer
+import kotlinx.android.synthetic.main.frag_default_layout_test.btn_get_live_stream_bit_rate
+import kotlinx.android.synthetic.main.frag_default_layout_test.btn_get_live_stream_bit_rate_mode
+import kotlinx.android.synthetic.main.frag_default_layout_test.btn_set_live_stream_bit_rate
+import kotlinx.android.synthetic.main.frag_default_layout_test.btn_set_live_stream_bit_rate_mode
+import kotlinx.android.synthetic.main.frag_default_layout_test.contentBitrate
+import kotlinx.android.synthetic.main.frag_default_layout_test.fbStreamingBitrate
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStartStop
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingChannel
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingConfig
@@ -83,7 +89,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private var showStreamInfo = true
     private var liveStreamType: LiveStreamType = LiveStreamType.UNKNOWN
     private var liveStreamBitrateMode: LiveVideoBitrateMode = LiveVideoBitrateMode.AUTO
-    private var liveStreamQuality: StreamQuality = StreamQuality.UNKNOWN
+    private var liveStreamQuality: StreamQuality = StreamQuality.HD
     private val msg = "input is null"
 
     var fps: Int = -1
@@ -246,9 +252,13 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private fun initListener() {
         fbStartStop.setOnClickListener(this)
         fbStreamingChannel.setOnClickListener(this)
-        fbStreamingConfig.setOnClickListener(this)
         fbStreamingInfo.setOnClickListener(this)
         fbStreamingQuality.setOnClickListener(this)
+        fbStreamingBitrate.setOnClickListener(this)
+        btn_get_live_stream_bit_rate.setOnClickListener(this)
+        btn_set_live_stream_bit_rate.setOnClickListener(this)
+        btn_get_live_stream_bit_rate_mode.setOnClickListener(this)
+        btn_set_live_stream_bit_rate_mode.setOnClickListener(this)
 
         secondaryFPVWidget.setOnClickListener { v: View? -> swapVideoSource() }
         initChannelStateListener()
@@ -506,6 +516,11 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                     stopStream()
                     fbStartStop.setImageResource(R.drawable.ic_play)
                 } else {
+                    liveStreamVM.setRTSPConfig(
+                        "123456",
+                        "123",
+                        "8554".toInt()
+                    )
                     startStream()
                     fbStartStop.setImageResource(R.drawable.ic_stop)
                 }
@@ -536,6 +551,10 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
             R.id.fbStreamingQuality -> {
                 showSetLiveStreamQualityDialog()
+            }
+
+            R.id.fbStreamingBitrate -> {
+                contentBitrate.isVisible = !contentBitrate.isVisible
             }
 
             R.id.btn_set_live_stream_config -> {

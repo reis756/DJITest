@@ -84,6 +84,7 @@ abstract class DJIMainActivity : AppCompatActivity() {
     private var vpnStart = false
 
     private var vpnUser: VPNUser? = null
+    private var vpnUserList: MutableList<VPNUser> = getVpnUserList()
 
     private lateinit var vpnUserListAdapter: VpnUserListAdapter
 
@@ -103,7 +104,7 @@ abstract class DJIMainActivity : AppCompatActivity() {
                 if (lastPacketReceive == null) lastPacketReceive = "0"
                 if (byteIn == null) byteIn = " "
                 if (byteOut == null) byteOut = " "
-                updateConnectionStatus(duration, lastPacketReceive, byteIn, byteOut)
+                //updateConnectionStatus(duration, lastPacketReceive, byteIn, byteOut)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -119,7 +120,8 @@ abstract class DJIMainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         window.decorView.apply {
-            systemUiVisibility = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            systemUiVisibility =
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
         }
 
         initMSDKInfoView()
@@ -151,13 +153,17 @@ abstract class DJIMainActivity : AppCompatActivity() {
                 status("connect")
                 vpnStart = false
                 OpenVPNService.setDefaultStatus()
-                logTv.text = "VPN Disconnected"
+                logTv.text =
+                    String.format(getString(R.string.vpn_status), getString(R.string.disconnected))
             }
 
             "CONNECTED" -> {
                 vpnStart = true // it will use after restart this activity
                 status("connected")
-                logTv.text = "VPN Connected"
+                logTv.text = String.format(
+                    getString(R.string.vpn_status),
+                    getString(R.string.connected)
+                )
             }
 
             "WAIT" -> logTv.text = "VPN waiting for server connection!!"
@@ -268,6 +274,8 @@ abstract class DJIMainActivity : AppCompatActivity() {
 
     private fun stopVpn(): Boolean {
         try {
+            vpnUserListAdapter.setItems(getVpnUserList())
+            vpnUser?.connected = false
             OpenVPNThread.stop()
             status("connect")
             vpnStart = false
@@ -291,7 +299,11 @@ abstract class DJIMainActivity : AppCompatActivity() {
         return connection!!.netCheck(this)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (checkPermission()) {
             handleAfterPermissionPermitted()
@@ -309,11 +321,16 @@ abstract class DJIMainActivity : AppCompatActivity() {
     }
 
     private fun setupAdapter() {
-        vpnUserListAdapter = VpnUserListAdapter(getVpnUserList().toList(), object : VpnUserListAdapter.Listener {
-            override fun onUserClick(vpnUser: VPNUser) {
-                newServer(vpnUser)
-            }
-        })
+        vpnUserListAdapter =
+            VpnUserListAdapter(object : VpnUserListAdapter.Listener {
+                override fun onUserClick(vpnUser: VPNUser) {
+                    reorderVpnList(vpnUser)
+
+                    newServer(vpnUser)
+                }
+            })
+
+        vpnUserListAdapter.setItems(vpnUserList)
 
         with(rvVpnUsers) {
             adapter = vpnUserListAdapter
@@ -321,6 +338,13 @@ abstract class DJIMainActivity : AppCompatActivity() {
             setHasFixedSize(false)
             isNestedScrollingEnabled = false
         }
+    }
+
+    private fun reorderVpnList(vpnUser: VPNUser) {
+        val userToRemove = vpnUserList.findLast { it.alias == vpnUser.alias }
+        vpnUserList.remove(userToRemove)
+        vpnUserList.add(vpnUser)
+        vpnUserListAdapter.setItems(vpnUserList.sortedBy { it.alias })
     }
 
     fun updateConnectionStatus(
@@ -407,8 +431,10 @@ abstract class DJIMainActivity : AppCompatActivity() {
                 packageManager.getPackageInfo(packageName, 0)
             val version = pInfo.versionName
             text_view_version.text = StringUtils.getResStr(R.string.sdk_version, version)
-            text_view_product_name.text = StringUtils.getResStr(R.string.product_name, it.productType.name)
-            text_view_package_product_category.text = StringUtils.getResStr(R.string.package_product_category, it.packageProductCategory)
+            text_view_product_name.text =
+                StringUtils.getResStr(R.string.product_name, it.productType.name)
+            text_view_package_product_category.text =
+                StringUtils.getResStr(R.string.package_product_category, it.packageProductCategory)
             text_core_info.text = it.coreInfo.toString()
         }
         view_base_info.setOnClickListener {
@@ -432,7 +458,8 @@ abstract class DJIMainActivity : AppCompatActivity() {
                 ToastUtils.showToast("Register Failure: ${resultPair.second}")
                 statusText = StringUtils.getResStr(this, R.string.unregistered)
             }
-            text_view_registered.text = StringUtils.getResStr(R.string.registration_status, statusText)
+            text_view_registered.text =
+                StringUtils.getResStr(R.string.registration_status, statusText)
         }
 
         msdkManagerVM.lvProductConnectionState.observe(this) { resultPair ->

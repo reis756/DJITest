@@ -286,6 +286,50 @@
             app:layout_constraintDimensionRatio="H,1:1"
             app:layout_constraintStart_toStartOf="parent" />
 
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/contentBitrate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <Button
+                android:id="@+id/btn_set_live_stream_bit_rate_mode"
+                style="@style/main_fragment_btn"
+                android:text="@string/btn_set_live_stream_bit_rate_mode"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:layout_editor_absoluteX="3dp" />
+
+            <Button
+                android:id="@+id/btn_get_live_stream_bit_rate_mode"
+                style="@style/main_fragment_btn"
+                android:text="@string/btn_get_live_stream_bit_rate_mode"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_set_live_stream_bit_rate_mode"
+                tools:layout_editor_absoluteX="3dp" />
+
+            <Button
+                android:id="@+id/btn_set_live_stream_bit_rate"
+                style="@style/main_fragment_btn"
+                android:text="@string/btn_set_live_stream_bit_rate"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_get_live_stream_bit_rate_mode"
+                tools:layout_editor_absoluteX="3dp" />
+
+            <Button
+                android:id="@+id/btn_get_live_stream_bit_rate"
+                style="@style/main_fragment_btn"
+                android:text="@string/btn_get_live_stream_bit_rate"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/btn_set_live_stream_bit_rate"
+                tools:layout_editor_absoluteX="3dp" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -293,6 +337,19 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|right"
         android:layout_margin="16dp">
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fbStreamingBitrate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:backgroundTint="@color/blue_main"
+            app:fabSize="mini"
+            app:layout_constraintBottom_toTopOf="@+id/fbStreamingQuality"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:srcCompat="@drawable/ic_bitrate" />
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/fbStreamingQuality"
@@ -304,7 +361,7 @@
             app:layout_constraintBottom_toTopOf="@+id/fbStreamingInfo"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/fbStreamingBitrate"
             app:srcCompat="@drawable/ic_quality" />
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -314,22 +371,10 @@
             android:layout_marginBottom="16dp"
             app:backgroundTint="@color/blue_main"
             app:fabSize="mini"
-            app:layout_constraintBottom_toTopOf="@+id/fbStreamingConfig"
+            app:layout_constraintBottom_toTopOf="@+id/fbStreamingChannel"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:srcCompat="@drawable/ic_info" />
-
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/fbStreamingConfig"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:backgroundTint="@color/blue_main"
-            app:fabSize="mini"
-            app:layout_constraintBottom_toTopOf="@id/fbStreamingChannel"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:srcCompat="@drawable/ic_video_settings" />
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/fbStreamingChannel"

@@ -183,7 +183,7 @@
                     android:enabled="true"
                     android:gravity="center"
                     android:padding="8dp"
-                    android:text="@string/tools"
+                    android:text="@string/livestream"
                     android:textColor="@color/white" />
 
             </LinearLayout>

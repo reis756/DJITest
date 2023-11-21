@@ -44,7 +44,7 @@ class LiveStreamFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Ca
     private var showStreamInfo = true
     private var liveStreamType: LiveStreamType = LiveStreamType.UNKNOWN
     private var liveStreamBitrateMode: LiveVideoBitrateMode = LiveVideoBitrateMode.AUTO
-    private var liveStreamQuality: StreamQuality = StreamQuality.UNKNOWN
+    private var liveStreamQuality: StreamQuality = StreamQuality.HD
     private val msg = "input is null"
 
     private lateinit var client: Mqtt3Client

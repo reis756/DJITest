@@ -30,6 +30,6 @@ class DJIAircraftMainActivity : DJIMainActivity() {
     }
 
     override fun prepareTestingToolsActivity() {
-        enableTestingTools(AircraftTestingToolsActivity::class.java)
+        enableTestingTools(LiveStreamActivity::class.java)
     }
 }

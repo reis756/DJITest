@@ -308,7 +308,7 @@
     <string name="timestamps_none">None</string>
     <string name="uploaded_data">Upload</string>
     <string name="downloaded_data">Download</string>
-    <string name="vpn_status">Vpn Status</string>
+    <string name="vpn_status">Vpn Status: %s</string>
     <string name="logview_options">View options</string>
     <string name="unhandled_exception">Unhandled exception: %1$s\n\n%2$s</string>
     <string name="unhandled_exception_context">%3$s: %1$s\n\n%2$s</string>
