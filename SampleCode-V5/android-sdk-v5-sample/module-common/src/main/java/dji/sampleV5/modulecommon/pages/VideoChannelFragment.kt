@@ -5,9 +5,11 @@ import android.R.attr.height
 import android.R.attr.width
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.media.ImageReader
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.os.*
@@ -20,9 +22,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.ViewModelProvider
-import com.google.gson.Gson
 import com.rabbitmq.client.Channel
-import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
 import dji.sampleV5.modulecommon.R
 import dji.sampleV5.modulecommon.api.MqttClient
@@ -40,15 +40,12 @@ import dji.v5.common.video.stream.StreamSource
 import dji.v5.utils.common.*
 import kotlinx.android.synthetic.main.video_channel_horizontal_scrollview.*
 import kotlinx.android.synthetic.main.video_channel_page.*
-import org.json.JSONObject
 import java.io.*
-import java.net.URISyntaxException
-import java.security.KeyManagementException
-import java.security.NoSuchAlgorithmException
-import java.security.Timestamp
-import java.util.Base64
+import java.nio.ByteBuffer
+import java.util.Timer
 import java.util.concurrent.BlockingDeque
 import java.util.concurrent.LinkedBlockingDeque
+import kotlin.concurrent.scheduleAtFixedRate
 
 
 @RequiresApi(Build.VERSION_CODES.N)
@@ -77,22 +74,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
     private var countStream: Int = 0
     private var stringBuilder: StringBuilder? = StringBuilder()
     private val DISPLAY = 100
-    private val mHandler: Handler = object : Handler(Looper.getMainLooper()) {
-        override fun handleMessage(msg: Message) {
-            super.handleMessage(msg)
-            when (msg?.what) {
-                DISPLAY -> {
-                    display(msg?.obj.toString())
-                }
-            }
-        }
-    }
 
-    private val mqttClient = MqttClient()
-    var publishThread: Thread? = null
-    var factory = ConnectionFactory()
-    lateinit var channel: Channel
-    private val queue: BlockingDeque<String> = LinkedBlockingDeque()
 
     //组帧后数据Listener
 
@@ -104,32 +86,6 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
              * @param VideoFrame 码流帧数据
              */
             it?.let {
-                /*if (++countStream == 30) {
-                    countStream = 0
-
-                    BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
-
-                    it.data?.let { byteArray ->
-                        mainHandler.post {
-                            val bitmap = BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
-                            //val bitmap = BitmapFactory.decodeStream(ByteArrayInputStream(it.data))
-                            val blob = ByteArrayOutputStream()
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 0 , blob)
-                            val bitmapdata = blob.toByteArray()
-                            publishMessage(bitmapdata.toBase64())
-                        }
-
-                        //val bitmap = BitmapFactory.decodeByteArray(it.data, 0, it.data.size)
-
-                        // Exibe o Bitmap em um ImageView (opcional)
-
-                        //imageview.setImageBitmap(bitmap)
-
-                        //publishMessage(bitmapdata.toBase64())
-
-                    }
-                }*/
-
                 if (fps != it.fps) {
                     fps = it.fps
                     mainHandler.post {
@@ -156,74 +112,6 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                 }
             }
         }
-
-    fun ByteArray.toBase64(): String =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            String(Base64.getEncoder().encode(this))
-        } else {
-            android.util.Base64.encodeToString(this, android.util.Base64.DEFAULT)
-        }
-
-    private fun setupConnectionFactory() {
-        try {
-            factory.username = "guest"
-            factory.password = "guest"
-            factory.virtualHost = "/"
-            factory.host = "54.232.143.5"
-            factory.port = 5672
-            factory.isAutomaticRecoveryEnabled = false
-        } catch (e1: KeyManagementException) {
-            e1.printStackTrace()
-        } catch (e1: NoSuchAlgorithmException) {
-            e1.printStackTrace()
-        } catch (e1: URISyntaxException) {
-            e1.printStackTrace()
-        }
-    }
-
-    private fun publishToAMQP() {
-        publishThread = Thread {
-            while (true) {
-                try {
-                    val connection: Connection = factory.newConnection()
-                    channel = connection.createChannel()
-                    //channel.confirmSelect()
-                    channel.queueDeclare(RABBITMQ_QUEUE_NAME, false, false, false, null);
-                    while (true) {
-                        val message = queue.takeFirst()
-                        try {
-                            channel.basicPublish("", RABBITMQ_QUEUE_NAME, null, message.toByteArray())
-                            //Log.d("RabbitMQ", "[s] $message")
-                            //channel.waitForConfirmsOrDie()
-                        } catch (e: Exception) {
-                            Log.d("RabbitMQ", "[f] $message")
-                            queue.putFirst(message)
-                            throw e
-                        }
-                    }
-                } catch (e: InterruptedException) {
-                    break
-                } catch (e: Exception) {
-                    Log.d("RabbitMQ", "Connection broken: " + e.javaClass.name)
-                    try {
-                        Thread.sleep(5000) //sleep and then try again
-                    } catch (e1: InterruptedException) {
-                        break
-                    }
-                }
-            }
-        }
-        publishThread?.start()
-    }
-
-    private fun publishMessage(message: String) {
-        try {
-            //Log.d("RabbitMQ", "[q] $message")
-            queue.putLast(message)
-        } catch (e: InterruptedException) {
-            e.printStackTrace()
-        }
-    }
 
     private val decoderStateChangeListener =
         DecoderStateChangeListener { oldState, newState ->
@@ -280,18 +168,13 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         }
         initVideoChannelInfo()
 
-        setupConnectionFactory()
-        publishToAMQP()
-
-
-        /*channelVM.setupRabbitMqConnectionFactory(
+        channelVM.setupRabbitMqConnectionFactory(
             RABBITMQ_USERNAME,
             RABBITMQ_PASSWORD,
             RABBITMQ_VIRTUAL_HOST,
             RABBITMQ_HOST,
-            RABBITMQ_PORT,
-            RABBITMQ_QUEUE_NAME
-        )*/
+            RABBITMQ_PORT, listOf(RABBITMQ_QUEUE_NAME, RABBITMQ_QUEUE_LOCATION_NAME)
+        )
     }
 
     private fun initVideoChannelInfo() {
@@ -307,8 +190,6 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
                 video_stream_info.text = videoStreamInfo
             }
         }
-
-        //mqttClient.connect()
 
         channelVM.videoChannel?.addStreamDataListener(streamDataListener) ?: showDisconnectToast()
         this@VideoChannelFragment.setFragmentResultListener("ResetAllVideoChannel") { requestKey, _ ->
@@ -326,7 +207,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         super.onDestroyView()
 
         channelVM.videoChannel?.removeStreamDataListener(streamDataListener)
-        mqttClient.disconnect()
+
         if (videoDecoder != null) {
             videoDecoder?.destroy()
             videoDecoder = null
@@ -335,7 +216,7 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
 
     override fun onDestroy() {
         super.onDestroy()
-        publishThread?.interrupt()
+
     }
 
     /**
@@ -587,6 +468,74 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
             videoDecoder?.onResume()
         }
+
+        /*timer = Timer()
+        timer.scheduleAtFixedRate(100, 100) {
+            captureFrame()
+        }*/
+    }
+
+    private fun captureFrame() {
+        val bitmap = surfaceView.getBitmapFromView() // Captura o frame do SurfaceView como um Bitmap
+
+        // Converte o Bitmap para um array de bytes no formato JPEG
+        val byteArray = bitmapToByteArray(bitmap)
+
+        // Envie o array de bytes para o servidor RabbitMQ
+        //sendFrameToRabbitMQ(byteArray)
+    }
+
+    private fun SurfaceView.getBitmapFromView(): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        draw(canvas)
+        return bitmap
+    }
+
+    private lateinit var timer: Timer
+    override fun onResume() {
+        super.onResume()
+
+        startBackgroundThread()
+    }
+
+    private fun startBackgroundThread() {
+        backgroundThread = HandlerThread("ImageListener")
+        backgroundThread!!.start()
+        backgroundHandler = Handler(backgroundThread!!.looper)
+    }
+
+    private fun stopBackgroundThread() {
+        backgroundThread!!.quitSafely()
+        try {
+            backgroundThread!!.join()
+            backgroundThread = null
+            backgroundHandler = null
+        } catch (e: InterruptedException) {
+            //    LOGGER.e(e, "Exception!");
+        }
+    }
+
+    override fun onPause() {
+        stopBackgroundThread()
+        super.onPause()
+    }
+
+    private var backgroundThread: HandlerThread? = null
+    private var backgroundHandler: Handler? = null
+
+    private lateinit var imageReader: ImageReader
+
+    private val imageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
+        val image = reader.acquireLatestImage()
+
+        image?.let {
+            val buffer: ByteBuffer = it.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
+
+            it.close()
+        }
     }
 
     /**
@@ -627,6 +576,8 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
      */
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         videoDecoder?.onPause()
+        imageReader.close()
+        timer.cancel()
     }
 
     private fun handlerYUV() {
@@ -790,7 +741,8 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, out)
         val imageBytes = out.toByteArray()
         val image = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-        //bitmapToByteArray(image)
+
+        channelVM.publishMessage(RABBITMQ_QUEUE_NAME, bitmapToByteArray(image))
 
         /*Gson().toJson(FrameUiModel(
             bitmapToByteArray(image),
@@ -798,8 +750,8 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         ))*/
 
 
-        channel.basicPublish("", RABBITMQ_QUEUE_NAME, null, bitmapToByteArray(image))
-        Log.d("RabbitMQ", "PUBLISH")
+        /*channel.basicPublish("", RABBITMQ_QUEUE_NAME, null, bitmapToByteArray(image))
+        Log.d("RabbitMQ", "PUBLISH")*/
 
     /*channelVM.publishMessage(
             RABBITMQ_QUEUE_NAME,
@@ -836,25 +788,6 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
         //Message.obtain(mHandler, DISPLAY, path).sendToTarget()
     }
 
-    /*fun outputStreamToByteArray(outputStream: OutputStream): ByteArray {
-        // Cria um ByteArrayOutputStream para coletar os bytes escritos no OutputStream
-        val byteArrayOutputStream = ByteArrayOutputStream()
-
-        // Lê os bytes do OutputStream e os escreve no ByteArrayOutputStream
-        val buffer = ByteArray(1024) // Use um tamanho de buffer adequado às suas necessidades
-        var bytesRead: Int
-        while (true) {
-            bytesRead = outputStream.read(buffer)
-            if (bytesRead == -1) {
-                break
-            }
-            byteArrayOutputStream.write(buffer, 0, bytesRead)
-        }
-
-        // Converte o ByteArrayOutputStream em um ByteArray
-        return byteArrayOutputStream.toByteArray()
-    }*/
-
     //Está ocorrendo erro. image = null
     fun byteArrayCompressJpg(buffer: YuvImage): ByteArray {
         val out = ByteArrayOutputStream()
@@ -887,12 +820,13 @@ class VideoChannelFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.
     }
 
     companion object {
-        const val RABBITMQ_USERNAME = "guest"
-        const val RABBITMQ_PASSWORD = "guest"
+        const val RABBITMQ_USERNAME = "sst"
+        const val RABBITMQ_PASSWORD = "12345"
         const val RABBITMQ_VIRTUAL_HOST = "/"
-        const val RABBITMQ_HOST = "54.232.143.5"
+        const val RABBITMQ_HOST = "44.195.107.125"
         const val RABBITMQ_PORT = 5672
-        const val RABBITMQ_QUEUE_NAME = "frames-drone-jpg"
+        const val RABBITMQ_QUEUE_NAME = "android-queu_sst_new"
+        const val RABBITMQ_QUEUE_LOCATION_NAME = "android-queu_sst_location"
     }
 
 }

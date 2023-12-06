@@ -26,6 +26,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.drawable.Drawable
+import android.media.MediaFormat
 import android.util.AttributeSet
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -42,6 +43,7 @@ import dji.v5.common.video.decoder.DecoderOutputMode
 import dji.v5.common.video.decoder.DecoderState
 import dji.v5.common.video.decoder.VideoDecoder
 import dji.v5.common.video.interfaces.IVideoDecoder
+import dji.v5.common.video.interfaces.YuvDataListener
 import dji.v5.common.video.stream.PhysicalDevicePosition
 import dji.v5.common.video.stream.StreamSource
 import dji.v5.utils.common.DisplayUtil
@@ -73,7 +75,9 @@ open class FPVWidget @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : ConstraintLayoutWidget<ModelState>(context, attrs, defStyleAttr),
-    SurfaceHolder.Callback {
+    SurfaceHolder.Callback,
+    YuvDataListener {
+
     private var viewWidth = 0
     private var viewHeight = 0
     private var rotationAngle = 0
@@ -84,6 +88,8 @@ open class FPVWidget @JvmOverloads constructor(
     private val horizontalOffset: Guideline = findViewById(R.id.horizontal_offset)
     private var fpvStateChangeResourceId: Int = INVALID_RESOURCE
     private var videoDecoder: IVideoDecoder? = null
+
+    private var yuvDataListener : YuvDataListener? = null
 
     private val widgetModel: FPVWidgetModel = FPVWidgetModel(
         DJISDKModel.getInstance(), ObservableInMemoryKeyedStore.getInstance(), FlatCameraModule()
@@ -291,6 +297,7 @@ open class FPVWidget @JvmOverloads constructor(
         if (!isInEditMode) {
             widgetModel.cleanup()
         }
+        videoDecoder?.removeYuvDataListener(this)
         videoDecoder?.destroy()
         videoDecoder = null
         super.onDetachedFromWindow()
@@ -320,6 +327,8 @@ open class FPVWidget @JvmOverloads constructor(
                 fpvSurfaceView.height,
                 true
             )
+
+            videoDecoder?.addYuvDataListener(this)
         } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
             videoDecoder?.onResume()
         }
@@ -336,6 +345,8 @@ open class FPVWidget @JvmOverloads constructor(
                 fpvSurfaceView.height,
                 true
             )
+
+            videoDecoder?.addYuvDataListener(this)
         } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
             videoDecoder?.onResume()
         }
@@ -570,6 +581,40 @@ open class FPVWidget @JvmOverloads constructor(
             }
         }
     }
+
+    fun setYuvDataListener(listener: YuvDataListener) {
+        if (yuvDataListener == null) {
+            yuvDataListener = listener
+
+            videoDecoder?.let {
+                videoDecoder!!.onPause()
+                videoDecoder!!.destroy()
+                videoDecoder = null
+            }
+            videoDecoder = VideoDecoder(
+                context,
+                videoChannelType
+            )
+            videoDecoder?.addYuvDataListener(this)
+        } else {
+            videoDecoder?.let {
+                videoDecoder!!.onPause()
+                videoDecoder!!.destroy()
+                videoDecoder = null
+            }
+            videoDecoder = VideoDecoder(
+                context,
+                videoChannelType,
+                DecoderOutputMode.SURFACE_MODE,
+                fpvSurfaceView.holder
+            )
+            videoDecoder?.removeYuvDataListener(this)
+        }
+    }
+    override fun onReceive(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
+        yuvDataListener?.onReceive(mediaFormat, data, width, height)
+    }
+
     //endregion
 
     /**
@@ -592,4 +637,5 @@ open class FPVWidget @JvmOverloads constructor(
      * Class defines the widget state updates
      */
     sealed class ModelState
+
 }

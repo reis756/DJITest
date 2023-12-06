@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.fragment.app.commit
 import dji.sampleV5.modulecommon.pages.DefaultLayoutTestFragment
+import dji.sampleV5.modulecommon.pages.MultiVideoChannelFragment
 
 class LiveStreamActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

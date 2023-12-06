@@ -9,10 +9,13 @@ import kotlinx.coroutines.withContext
 import java.net.URISyntaxException
 import java.security.KeyManagementException
 import java.security.NoSuchAlgorithmException
+import java.util.concurrent.BlockingDeque
+import java.util.concurrent.LinkedBlockingDeque
 
 class RabbitMq {
-    var factory = ConnectionFactory()
-    var channel: Channel? = null
+    private var factory = ConnectionFactory()
+    private var channel: Channel? = null
+    private val queue: BlockingDeque<String> = LinkedBlockingDeque()
 
     fun setupConnectionFactory(
         userName: String,
@@ -37,36 +40,43 @@ class RabbitMq {
         }
     }
 
-    suspend fun prepareConnection(queueName: String) {
-        withContext(Dispatchers.Default) {
-            while (true) {
-                try {
-                    val connection: Connection = factory.newConnection()
-                    channel = connection.createChannel()
-                    channel?.queueDeclare(queueName, false, false, false, null)
-                } catch (e: InterruptedException) {
-                    Log.d("RabbitMQ", "Interrupted: " + e.javaClass.name)
-                    break
-                } catch (e: Exception) {
-                    Log.d("RabbitMQ", "Connection broken: " + e.javaClass.name)
+    fun prepareConnection(queueName: List<String>) {
+        while (true) {
+            try {
+                val connection: Connection = factory.newConnection()
+                channel = connection.createChannel()
+                queueName.forEach {
+                    channel?.queueDeclare(it, true, false, false, null)
+                }
+                while (true) {
+                    val message = queue.takeFirst()
                     try {
-                        Thread.sleep(5000) //sleep and then try again
-                    } catch (e1: InterruptedException) {
-                        break
+                        queueName.forEach {
+                            publishMessage(it, message.toByteArray())
+                        }
+                    } catch (e: Exception) {
+                        Log.d("RabbitMQ", "[f] $message")
+                        throw e
                     }
+                }
+            } catch (e: InterruptedException) {
+                break
+            } catch (e: Exception) {
+                Log.d("RabbitMQ", "Connection broken: " + e.javaClass.name)
+                try {
+                    Thread.sleep(5000)
+                } catch (e1: InterruptedException) {
+                    break
                 }
             }
         }
     }
 
-    suspend fun publishMessage(queueName: String, message: String) {
-        withContext(Dispatchers.Default) {
-            try {
-                Log.d("RabbitMQ", "[q] $message")
-                channel?.basicPublish("", queueName, null, message.toByteArray())
-            } catch (e: InterruptedException) {
-                e.printStackTrace()
-            }
+    fun publishMessage(queueName: String, message: ByteArray) {
+        try {
+            channel?.basicPublish("", queueName, null, message)
+        } catch (e: InterruptedException) {
+            e.printStackTrace()
         }
     }
 }

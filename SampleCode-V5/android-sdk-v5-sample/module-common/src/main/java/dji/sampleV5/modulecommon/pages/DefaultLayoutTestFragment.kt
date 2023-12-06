@@ -1,7 +1,17 @@
 package dji.sampleV5.modulecommon.pages
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
+import android.location.Location
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.os.AsyncTask
 import android.os.Bundle
 import android.text.TextUtils
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.SurfaceHolder
 import android.view.View
@@ -11,20 +21,34 @@ import androidx.appcompat.app.AlertDialog
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.gson.Gson
 import dji.sampleV5.modulecommon.R
+import dji.sampleV5.modulecommon.data.DeviceLocation
 import dji.sampleV5.modulecommon.models.LiveStreamVM
 import dji.sdk.keyvalue.value.common.CameraLensType
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.video.channel.VideoChannelState
 import dji.v5.common.video.channel.VideoChannelType
+import dji.v5.common.video.decoder.DecoderOutputMode
+import dji.v5.common.video.decoder.DecoderState
+import dji.v5.common.video.decoder.VideoDecoder
+import dji.v5.common.video.interfaces.IVideoChannel
+import dji.v5.common.video.interfaces.IVideoDecoder
+import dji.v5.common.video.interfaces.IVideoFrame
+import dji.v5.common.video.interfaces.StreamDataListener
 import dji.v5.common.video.interfaces.VideoChannelStateChangeListener
+import dji.v5.common.video.interfaces.YuvDataListener
 import dji.v5.common.video.stream.PhysicalDevicePosition
 import dji.v5.common.video.stream.StreamSource
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.datacenter.livestream.LiveStreamType
 import dji.v5.manager.datacenter.livestream.LiveVideoBitrateMode
 import dji.v5.manager.datacenter.livestream.StreamQuality
+import dji.v5.utils.common.ContextUtil
+import dji.v5.utils.common.DiskUtil
 import dji.v5.utils.common.JsonUtil
 import dji.v5.utils.common.LogUtils
 import dji.v5.utils.common.StringUtils
@@ -71,6 +95,9 @@ import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingInfo
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingQuality
 import kotlinx.android.synthetic.main.frag_live_stream_page.tv_live_stream_info
 import kotlinx.android.synthetic.main.video_play_page.surfaceView
+import java.io.ByteArrayOutputStream
+import java.util.Timer
+import java.util.TimerTask
 import java.util.concurrent.TimeUnit
 
 /**
@@ -80,7 +107,8 @@ import java.util.concurrent.TimeUnit
  * CreateDate : 2022/3/23 10:58 上午
  * Copyright : ©2022 DJI All Rights Reserved.
  */
-class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback {
+class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHolder.Callback,
+    YuvDataListener {
     private val liveStreamVM: LiveStreamVM by viewModels()
     private lateinit var dialog: AlertDialog
     private lateinit var configDialog: AlertDialog
@@ -136,6 +164,98 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private var primaryChannelStateListener: VideoChannelStateChangeListener? = null
     private var secondaryChannelStateListener: VideoChannelStateChangeListener? = null
 
+    var videoChannel: IVideoChannel? = null
+    private var videoDecoder: IVideoDecoder? = null
+
+    private fun saveYuvData(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
+        data?.let {
+            mediaFormat?.let {
+                when (it.getInteger(MediaFormat.KEY_COLOR_FORMAT)) {
+                    0, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar -> {
+                        newSaveYuvDataToJPEG(data, width, height)
+                    }
+
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar -> {
+                        newSaveYuvDataToJPEG420P(data, width, height)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun newSaveYuvDataToJPEG420P(yuvFrame: ByteArray, width: Int, height: Int) {
+        if (yuvFrame.size < width * height) {
+            return
+        }
+        val length = width * height
+        val u = ByteArray(width * height / 4)
+        val v = ByteArray(width * height / 4)
+        for (i in u.indices) {
+            u[i] = yuvFrame[length + i]
+            v[i] = yuvFrame[length + u.size + i]
+        }
+        for (i in u.indices) {
+            yuvFrame[length + 2 * i] = v[i]
+            yuvFrame[length + 2 * i + 1] = u[i]
+        }
+
+        //publishMessage(yuvFrame.toBase64())
+        screenShot(
+            yuvFrame,
+            width,
+            height
+        )
+    }
+
+    private fun newSaveYuvDataToJPEG(yuvFrame: ByteArray, width: Int, height: Int) {
+        if (yuvFrame.size < width * height) {
+            return
+        }
+        val length = width * height
+        val u = ByteArray(width * height / 4)
+        val v = ByteArray(width * height / 4)
+        for (i in u.indices) {
+            v[i] = yuvFrame[length + 2 * i]
+            u[i] = yuvFrame[length + 2 * i + 1]
+        }
+        for (i in u.indices) {
+            yuvFrame[length + 2 * i] = u[i]
+            yuvFrame[length + 2 * i + 1] = v[i]
+        }
+
+        screenShot(
+            yuvFrame,
+            width,
+            height
+        )
+    }
+
+    private fun screenShot(buf: ByteArray, width: Int, height: Int) {
+        val yuvImage = YuvImage(
+            buf,
+            ImageFormat.NV21,
+            width,
+            height,
+            null
+        )
+
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, out)
+        val imageBytes = out.toByteArray()
+        val image = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+        liveStreamVM.publishMessage(RABBITMQ_QUEUE_NAME, bitmapToByteArray(image))
+    }
+
+    private fun bitmapToByteArray(
+        bitmap: Bitmap,
+        format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+        quality: Int = 80
+    ): ByteArray {
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        bitmap.compress(format, quality, byteArrayOutputStream)
+        return byteArrayOutputStream.toByteArray()
+    }
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -205,6 +325,38 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
         initListener()
         initLiveStreamInfo()
+
+        liveStreamVM.setupRabbitMqConnectionFactory(
+            RABBITMQ_USERNAME,
+            RABBITMQ_PASSWORD,
+            RABBITMQ_VIRTUAL_HOST,
+            RABBITMQ_HOST,
+            RABBITMQ_PORT, listOf(
+                RABBITMQ_QUEUE_NAME,
+                RABBITMQ_QUEUE_LOCATION_NAME
+            )
+        )
+
+        val timer = Timer()
+
+        timer.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                val location = liveStreamVM.getAircraftLocation()
+                val locationJson = Gson().toJson(
+                    DeviceLocation(
+                        location?.latitude,
+                        location?.longitude
+                    )
+                )
+                liveStreamVM.publishMessage(
+                    RABBITMQ_QUEUE_LOCATION_NAME,
+                    locationJson.toByteArray()
+                )
+
+                Log.i(TAG, locationJson.toString())
+            }
+
+        }, 0, 5000L)
     }
 
     override fun onResume() {
@@ -355,6 +507,9 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
                 VideoChannelType.PRIMARY_STREAM_CHANNEL
             )
+
+        videoChannel = primaryChannel
+
         val secondaryChannel =
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
                 VideoChannelType.SECONDARY_STREAM_CHANNEL
@@ -398,6 +553,8 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
                 VideoChannelType.PRIMARY_STREAM_CHANNEL
             )
+
+
         val secondaryChannel =
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
                 VideoChannelType.SECONDARY_STREAM_CHANNEL
@@ -547,6 +704,18 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             R.id.fbStreamingInfo -> {
                 showStreamInfo = !showStreamInfo
                 tv_live_stream_info.isVisible = showStreamInfo
+                /*videoDecoder?.let {
+                    videoDecoder!!.onPause()
+                    videoDecoder!!.destroy()
+                    videoDecoder = null
+                }
+                videoDecoder = VideoDecoder(
+                    this@DefaultLayoutTestFragment.context,
+                    videoChannel!!.videoChannelType
+                )
+               // videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
+                videoDecoder?.addYuvDataListener(this)*/
+                primaryFpvWidget.setYuvDataListener(this)
             }
 
             R.id.fbStreamingQuality -> {
@@ -1148,17 +1317,42 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
+        if (videoDecoder == null) {
+            videoDecoder = VideoDecoder(
+                this@DefaultLayoutTestFragment.context,
+                videoChannel?.videoChannelType,
+                DecoderOutputMode.SURFACE_MODE,
+                surfaceView.holder
+            )
+
+            //videoDecoder?.addYuvDataListener(this)
+        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
+            videoDecoder?.onResume()
+        }
+
 
         curWidth = surfaceView.width
         curHeight = surfaceView.height
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        if (videoDecoder == null) {
+            videoDecoder = VideoDecoder(
+                this@DefaultLayoutTestFragment.context,
+                videoChannel?.videoChannelType,
+                DecoderOutputMode.SURFACE_MODE,
+                surfaceView.holder
+            )
+        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
+            videoDecoder?.onResume()
+        }
+
         curWidth = width
         curHeight = height
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
+        videoDecoder?.onPause()
     }
 
     override fun onDestroyView() {
@@ -1170,10 +1364,31 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         mapWidget.onDestroy()
         MediaDataCenter.getInstance().videoStreamManager.clearAllStreamSourcesListeners()
         removeChannelStateListener()
+
+        if (videoDecoder != null) {
+            videoDecoder?.destroy()
+            videoDecoder = null
+        }
     }
 
     private class CameraSource(
         var devicePosition: PhysicalDevicePosition,
         var lensType: CameraLensType
     )
+
+    override fun onReceive(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
+        //AsyncTask.execute(Runnable {
+            saveYuvData(mediaFormat, data, width, height)
+        //})
+    }
+
+    companion object {
+        const val RABBITMQ_USERNAME = "sst"
+        const val RABBITMQ_PASSWORD = "12345"
+        const val RABBITMQ_VIRTUAL_HOST = "/"
+        const val RABBITMQ_HOST = "44.195.107.125"
+        const val RABBITMQ_PORT = 5672
+        const val RABBITMQ_QUEUE_NAME = "android-queu_sst_new"
+        const val RABBITMQ_QUEUE_LOCATION_NAME = "android-queu_sst_location"
+    }
 }

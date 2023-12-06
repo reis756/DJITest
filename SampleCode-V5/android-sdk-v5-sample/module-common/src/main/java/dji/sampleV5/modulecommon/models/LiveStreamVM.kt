@@ -1,10 +1,18 @@
 package dji.sampleV5.modulecommon.models
 
+import android.util.Log
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
+import dji.sampleV5.modulecommon.api.RabbitMq
+import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.video.channel.VideoChannelState
 import dji.v5.common.video.channel.VideoChannelType
+import dji.v5.et.create
+import dji.v5.et.get
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ILiveStreamManager
 import dji.v5.manager.datacenter.livestream.*
@@ -15,6 +23,8 @@ import dji.v5.manager.datacenter.livestream.settings.RtspSettings
 import dji.v5.manager.datacenter.video.VideoStreamManager
 import dji.v5.utils.common.ContextUtil
 import dji.v5.utils.common.DjiSharedPreferencesManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * ClassName : LiveStreamVM
@@ -32,7 +42,14 @@ class LiveStreamVM : DJIViewModel() {
     val curLiveStreanmStatus = MutableLiveData<LiveStreamStatus>()
     val curLiveStreamError = MutableLiveData<IDJIError>()
     val streamManager: ILiveStreamManager = MediaDataCenter.getInstance().liveStreamManager
+    val mediaManager = MediaDataCenter.getInstance().mediaManager
+    val videoStreamManager = MediaDataCenter.getInstance().videoStreamManager
 
+    val rabbitMq = RabbitMq()
+    private var startTimeFrame = 0L
+    private var counter = 0
+    private val _actualFps: MutableLiveData<Int> = MutableLiveData(0)
+    val actualFps: LiveData<Int> = _actualFps
 
     init {
         liveStreamStatusListener = object : LiveStreamStatusListener {
@@ -261,4 +278,50 @@ class LiveStreamVM : DJIViewModel() {
         return VideoStreamManager.getInstance().getAvailableVideoChannel(channel)
             ?.let { it.videoChannelStatus } ?: let { VideoChannelState.CLOSE }
     }
+
+    fun setupRabbitMqConnectionFactory(
+        userName: String,
+        password: String,
+        virtualHost: String,
+        host: String,
+        port: Int,
+        queueName: List<String>
+    ) {
+        rabbitMq.setupConnectionFactory(userName, password, virtualHost, host, port)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            rabbitMq.prepareConnection(queueName)
+        }
+    }
+
+    fun publishMessage(queue: String, message: ByteArray) {
+        viewModelScope.launch(Dispatchers.IO) {
+            rabbitMq.publishMessage(queue, message)
+            getFps()
+        }
+    }
+
+    private fun getFps() {
+        if (startTimeFrame == 0L) {
+            startTimeFrame = System.currentTimeMillis()
+            counter++
+        } else {
+            val difference: Long = System.currentTimeMillis() - startTimeFrame
+
+            val seconds = difference / 1000.0
+
+            if(seconds >= 1) {
+                _actualFps.postValue(counter)
+                counter = 0
+                startTimeFrame = System.currentTimeMillis()
+            }else{
+                counter++
+            }
+        }
+        Log.i("CameraProcessImage", "fps ${_actualFps.value}")
+    }
+
+    fun getAircraftLocation() = FlightControllerKey.KeyAircraftLocation.create().get(
+        LocationCoordinate2D(0.0, 0.0)
+    )
 }
