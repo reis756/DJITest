@@ -4,7 +4,10 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
 import dji.sampleV5.modulecommon.api.RabbitMq
+import dji.sampleV5.modulecommon.data.DeviceLocation
+import dji.sampleV5.modulecommon.pages.DefaultLayoutTestFragment.Companion.RABBITMQ_QUEUE_LOCATION_NAME
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.v5.common.callback.CommonCallbacks
@@ -24,6 +27,10 @@ import dji.v5.manager.datacenter.video.VideoStreamManager
 import dji.v5.utils.common.ContextUtil
 import dji.v5.utils.common.DjiSharedPreferencesManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -51,6 +58,7 @@ class LiveStreamVM : DJIViewModel() {
     private val _actualFps: MutableLiveData<Int> = MutableLiveData(0)
     val actualFps: LiveData<Int> = _actualFps
 
+    private var repeatJob: Job? = null
     init {
         liveStreamStatusListener = object : LiveStreamStatusListener {
             override fun onLiveStreamStatusUpdate(status: LiveStreamStatus?) {
@@ -291,6 +299,8 @@ class LiveStreamVM : DJIViewModel() {
 
         viewModelScope.launch(Dispatchers.IO) {
             rabbitMq.prepareConnection(queueName)
+
+            repeatJob = sendLocationToServer()
         }
     }
 
@@ -301,7 +311,7 @@ class LiveStreamVM : DJIViewModel() {
         }
     }
 
-    private fun getFps() {
+    fun getFps() {
         if (startTimeFrame == 0L) {
             startTimeFrame = System.currentTimeMillis()
             counter++
@@ -321,7 +331,28 @@ class LiveStreamVM : DJIViewModel() {
         Log.i("CameraProcessImage", "fps ${_actualFps.value}")
     }
 
-    fun getAircraftLocation() = FlightControllerKey.KeyAircraftLocation.create().get(
+    private fun sendLocationToServer(): Job {
+        return viewModelScope.launch(Dispatchers.IO) {
+            while (NonCancellable.isActive) {
+                val location = getAircraftLocation()
+                val locationJson = Gson().toJson(
+                    DeviceLocation(
+                        location?.latitude,
+                        location?.longitude
+                    )
+                )
+
+                publishMessage(RABBITMQ_QUEUE_LOCATION_NAME, locationJson.toByteArray())
+                delay(5000L)
+            }
+        }
+    }
+
+    private fun cancelSendLocationToServer() {
+        repeatJob?.cancel()
+    }
+
+    private fun getAircraftLocation() = FlightControllerKey.KeyAircraftLocation.create().get(
         LocationCoordinate2D(0.0, 0.0)
     )
 }

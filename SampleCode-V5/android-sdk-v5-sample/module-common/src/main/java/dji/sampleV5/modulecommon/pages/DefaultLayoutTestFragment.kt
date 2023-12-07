@@ -14,6 +14,7 @@ import android.text.TextUtils
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -35,6 +36,7 @@ import dji.v5.common.video.channel.VideoChannelType
 import dji.v5.common.video.decoder.DecoderOutputMode
 import dji.v5.common.video.decoder.DecoderState
 import dji.v5.common.video.decoder.VideoDecoder
+import dji.v5.common.video.interfaces.DecoderStateChangeListener
 import dji.v5.common.video.interfaces.IVideoChannel
 import dji.v5.common.video.interfaces.IVideoDecoder
 import dji.v5.common.video.interfaces.IVideoFrame
@@ -95,6 +97,7 @@ import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingInfo
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingQuality
 import kotlinx.android.synthetic.main.frag_live_stream_page.tv_live_stream_info
 import kotlinx.android.synthetic.main.video_play_page.surfaceView
+import kotlinx.android.synthetic.main.video_play_page.view.surfaceView
 import java.io.ByteArrayOutputStream
 import java.util.Timer
 import java.util.TimerTask
@@ -153,6 +156,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private lateinit var mapWidget: MapWidget
     private lateinit var topBarPanel: TopBarPanelWidget
     private lateinit var fpvParentView: ConstraintLayout
+    private lateinit var surfaceView: SurfaceView
 
     private var compositeDisposable: CompositeDisposable? = null
     private val cameraSourceProcessor = DataProcessor.create(
@@ -164,98 +168,8 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private var primaryChannelStateListener: VideoChannelStateChangeListener? = null
     private var secondaryChannelStateListener: VideoChannelStateChangeListener? = null
 
-    var videoChannel: IVideoChannel? = null
     private var videoDecoder: IVideoDecoder? = null
 
-    private fun saveYuvData(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
-        data?.let {
-            mediaFormat?.let {
-                when (it.getInteger(MediaFormat.KEY_COLOR_FORMAT)) {
-                    0, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar -> {
-                        newSaveYuvDataToJPEG(data, width, height)
-                    }
-
-                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar -> {
-                        newSaveYuvDataToJPEG420P(data, width, height)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun newSaveYuvDataToJPEG420P(yuvFrame: ByteArray, width: Int, height: Int) {
-        if (yuvFrame.size < width * height) {
-            return
-        }
-        val length = width * height
-        val u = ByteArray(width * height / 4)
-        val v = ByteArray(width * height / 4)
-        for (i in u.indices) {
-            u[i] = yuvFrame[length + i]
-            v[i] = yuvFrame[length + u.size + i]
-        }
-        for (i in u.indices) {
-            yuvFrame[length + 2 * i] = v[i]
-            yuvFrame[length + 2 * i + 1] = u[i]
-        }
-
-        //publishMessage(yuvFrame.toBase64())
-        screenShot(
-            yuvFrame,
-            width,
-            height
-        )
-    }
-
-    private fun newSaveYuvDataToJPEG(yuvFrame: ByteArray, width: Int, height: Int) {
-        if (yuvFrame.size < width * height) {
-            return
-        }
-        val length = width * height
-        val u = ByteArray(width * height / 4)
-        val v = ByteArray(width * height / 4)
-        for (i in u.indices) {
-            v[i] = yuvFrame[length + 2 * i]
-            u[i] = yuvFrame[length + 2 * i + 1]
-        }
-        for (i in u.indices) {
-            yuvFrame[length + 2 * i] = u[i]
-            yuvFrame[length + 2 * i + 1] = v[i]
-        }
-
-        screenShot(
-            yuvFrame,
-            width,
-            height
-        )
-    }
-
-    private fun screenShot(buf: ByteArray, width: Int, height: Int) {
-        val yuvImage = YuvImage(
-            buf,
-            ImageFormat.NV21,
-            width,
-            height,
-            null
-        )
-
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, out)
-        val imageBytes = out.toByteArray()
-        val image = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-
-        liveStreamVM.publishMessage(RABBITMQ_QUEUE_NAME, bitmapToByteArray(image))
-    }
-
-    private fun bitmapToByteArray(
-        bitmap: Bitmap,
-        format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
-        quality: Int = 80
-    ): ByteArray {
-        val byteArrayOutputStream = ByteArrayOutputStream()
-        bitmap.compress(format, quality, byteArrayOutputStream)
-        return byteArrayOutputStream.toByteArray()
-    }
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -272,6 +186,8 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         fpvParentView.setLayerType(View.LAYER_TYPE_NONE, null)
         topBarPanel = view.findViewById<TopBarPanelWidget>(R.id.panel_top_bar)
         primaryFpvWidget = view.findViewById<FPVWidget>(R.id.widget_primary_fpv)
+        surfaceView = primaryFpvWidget.fpvSurfaceView
+        surfaceView.holder.addCallback(this)
         fpvInteractionWidget = view.findViewById<FPVInteractionWidget>(R.id.widget_fpv_interaction)
         secondaryFPVWidget = view.findViewById<FPVWidget>(R.id.widget_secondary_fpv)
         systemStatusListPanelWidget =
@@ -325,38 +241,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
 
         initListener()
         initLiveStreamInfo()
-
-        liveStreamVM.setupRabbitMqConnectionFactory(
-            RABBITMQ_USERNAME,
-            RABBITMQ_PASSWORD,
-            RABBITMQ_VIRTUAL_HOST,
-            RABBITMQ_HOST,
-            RABBITMQ_PORT, listOf(
-                RABBITMQ_QUEUE_NAME,
-                RABBITMQ_QUEUE_LOCATION_NAME
-            )
-        )
-
-        val timer = Timer()
-
-        timer.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
-                val location = liveStreamVM.getAircraftLocation()
-                val locationJson = Gson().toJson(
-                    DeviceLocation(
-                        location?.latitude,
-                        location?.longitude
-                    )
-                )
-                liveStreamVM.publishMessage(
-                    RABBITMQ_QUEUE_LOCATION_NAME,
-                    locationJson.toByteArray()
-                )
-
-                Log.i(TAG, locationJson.toString())
-            }
-
-        }, 0, 5000L)
+        prepareConnectionToServer()
     }
 
     override fun onResume() {
@@ -447,6 +332,19 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         }
     }
 
+    private fun prepareConnectionToServer() {
+        liveStreamVM.setupRabbitMqConnectionFactory(
+            RABBITMQ_USERNAME,
+            RABBITMQ_PASSWORD,
+            RABBITMQ_VIRTUAL_HOST,
+            RABBITMQ_HOST,
+            RABBITMQ_PORT, listOf(
+                RABBITMQ_QUEUE_NAME,
+                RABBITMQ_QUEUE_LOCATION_NAME
+            )
+        )
+    }
+
     private fun updateLiveStreamInfo() {
         val liveStreamInfo = "\nfps: ${fps}fps \n" +
                 "vbps: ${vbps}Kbps \n" +
@@ -507,8 +405,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
                 VideoChannelType.PRIMARY_STREAM_CHANNEL
             )
-
-        videoChannel = primaryChannel
 
         val secondaryChannel =
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
@@ -669,7 +565,8 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     override fun onClick(v: View?) {
         when (v?.id) {
             R.id.fbStartStop -> {
-                if (liveStreamVM.isStreaming()) {
+                //TODO RTSP implementation
+                /*if (liveStreamVM.isStreaming()) {
                     stopStream()
                     fbStartStop.setImageResource(R.drawable.ic_play)
                 } else {
@@ -680,6 +577,40 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                     )
                     startStream()
                     fbStartStop.setImageResource(R.drawable.ic_stop)
+                }*/
+                //primaryFpvWidget.setYuvDataListener(this)
+                if (!isStreaming) {
+                    fbStartStop.setImageResource(R.drawable.ic_play)
+
+                    videoDecoder?.let {
+                        videoDecoder!!.onPause()
+                        videoDecoder!!.destroy()
+                        videoDecoder = null
+                    }
+                    videoDecoder = VideoDecoder(
+                        context,
+                        primaryFpvWidget.videoChannelType,
+                        DecoderOutputMode.YUV_MODE,
+                        primaryFpvWidget.fpvSurfaceView.holder
+                    )
+                    //videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
+                    videoDecoder?.addYuvDataListener(this)
+                    isStreaming = true
+                } else {
+                    fbStartStop.setImageResource(R.drawable.ic_stop)
+                    videoDecoder?.let {
+                        videoDecoder!!.onPause()
+                        videoDecoder!!.destroy()
+                        videoDecoder = null
+                    }
+                    /*videoDecoder = VideoDecoder(
+                        context,
+                        primaryFpvWidget.videoChannelType,
+                        DecoderOutputMode.YUV_MODE,
+                        primaryFpvWidget.fpvSurfaceView.holder
+                    )*/
+                    //videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
+                    videoDecoder?.removeYuvDataListener(this)
                 }
             }
 
@@ -715,7 +646,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                 )
                // videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
                 videoDecoder?.addYuvDataListener(this)*/
-                primaryFpvWidget.setYuvDataListener(this)
+
             }
 
             R.id.fbStreamingQuality -> {
@@ -1316,43 +1247,63 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         }
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        if (videoDecoder == null) {
-            videoDecoder = VideoDecoder(
-                this@DefaultLayoutTestFragment.context,
-                videoChannel?.videoChannelType,
-                DecoderOutputMode.SURFACE_MODE,
-                surfaceView.holder
-            )
+    private val decoderStateChangeListener =
+        DecoderStateChangeListener { oldState, newState ->
+            /**
+             * 解码器状态事件回调方法
+             *
+             * @param oldState 解码器前一个状态
+             * @param newState 解码器当前状态
+             */
+            /**
+             * 解码器状态事件回调方法
+             *
+             * @param oldState 解码器前一个状态
+             * @param newState 解码器当前状态
+             */
 
-            //videoDecoder?.addYuvDataListener(this)
-        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
-            videoDecoder?.onResume()
+            //ToastUtils.showToast("Decoder State change from $oldState to $newState")
         }
 
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        /*if (videoDecoder == null) {
+
+                videoDecoder = VideoDecoder(
+                    this@DefaultLayoutTestFragment.context,
+                    primaryFpvWidget.videoChannelType,
+                    DecoderOutputMode.SURFACE_MODE,
+                    surfaceView.holder
+                )
+                videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
+
+        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
+            videoDecoder?.onResume()
+        }*/
 
         curWidth = surfaceView.width
         curHeight = surfaceView.height
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        if (videoDecoder == null) {
+        /*if (videoDecoder == null) {
             videoDecoder = VideoDecoder(
                 this@DefaultLayoutTestFragment.context,
-                videoChannel?.videoChannelType,
+                primaryFpvWidget.videoChannelType,
                 DecoderOutputMode.SURFACE_MODE,
                 surfaceView.holder
             )
+            videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
+
         } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
             videoDecoder?.onResume()
-        }
+        }*/
 
         curWidth = width
         curHeight = height
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        videoDecoder?.onPause()
+        //videoDecoder?.onPause()
     }
 
     override fun onDestroyView() {
@@ -1361,14 +1312,14 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             stopStream()
         }
 
-        mapWidget.onDestroy()
-        MediaDataCenter.getInstance().videoStreamManager.clearAllStreamSourcesListeners()
-        removeChannelStateListener()
-
         if (videoDecoder != null) {
             videoDecoder?.destroy()
             videoDecoder = null
         }
+
+        mapWidget.onDestroy()
+        MediaDataCenter.getInstance().videoStreamManager.clearAllStreamSourcesListeners()
+        removeChannelStateListener()
     }
 
     private class CameraSource(
@@ -1380,6 +1331,97 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         //AsyncTask.execute(Runnable {
             saveYuvData(mediaFormat, data, width, height)
         //})
+    }
+
+    private fun saveYuvData(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
+        data?.let {
+            mediaFormat?.let {
+                when (it.getInteger(MediaFormat.KEY_COLOR_FORMAT)) {
+                    0, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar -> {
+                        newSaveYuvDataToJPEG(data, width, height)
+                    }
+
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar -> {
+                        newSaveYuvDataToJPEG420P(data, width, height)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun newSaveYuvDataToJPEG420P(yuvFrame: ByteArray, width: Int, height: Int) {
+        if (yuvFrame.size < width * height) {
+            return
+        }
+        val length = width * height
+        val u = ByteArray(width * height / 4)
+        val v = ByteArray(width * height / 4)
+        for (i in u.indices) {
+            u[i] = yuvFrame[length + i]
+            v[i] = yuvFrame[length + u.size + i]
+        }
+        for (i in u.indices) {
+            yuvFrame[length + 2 * i] = v[i]
+            yuvFrame[length + 2 * i + 1] = u[i]
+        }
+
+        //publishMessage(yuvFrame.toBase64())
+        screenShot(
+            yuvFrame,
+            width,
+            height
+        )
+    }
+
+    private fun newSaveYuvDataToJPEG(yuvFrame: ByteArray, width: Int, height: Int) {
+        if (yuvFrame.size < width * height) {
+            return
+        }
+        val length = width * height
+        val u = ByteArray(width * height / 4)
+        val v = ByteArray(width * height / 4)
+        for (i in u.indices) {
+            v[i] = yuvFrame[length + 2 * i]
+            u[i] = yuvFrame[length + 2 * i + 1]
+        }
+        for (i in u.indices) {
+            yuvFrame[length + 2 * i] = u[i]
+            yuvFrame[length + 2 * i + 1] = v[i]
+        }
+
+        screenShot(
+            yuvFrame,
+            width,
+            height
+        )
+    }
+
+    private fun screenShot(buf: ByteArray, width: Int, height: Int) {
+        val yuvImage = YuvImage(
+            buf,
+            ImageFormat.NV21,
+            width,
+            height,
+            null
+        )
+
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, out)
+        val imageBytes = out.toByteArray()
+        val image = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+        liveStreamVM.getFps()
+        //liveStreamVM.publishMessage(RABBITMQ_QUEUE_NAME, bitmapToByteArray(image))
+    }
+
+    private fun bitmapToByteArray(
+        bitmap: Bitmap,
+        format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+        quality: Int = 80
+    ): ByteArray {
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        bitmap.compress(format, quality, byteArrayOutputStream)
+        return byteArrayOutputStream.toByteArray()
     }
 
     companion object {
