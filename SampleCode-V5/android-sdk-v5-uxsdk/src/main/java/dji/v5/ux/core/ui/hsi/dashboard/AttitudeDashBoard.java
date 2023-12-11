@@ -192,7 +192,7 @@ public class AttitudeDashBoard extends ScrollableAttributeDashBoard {
 
         mBarrierTextMargin = getResources().getDimension(R.dimen.uxsdk_1_dp);
         //TODO  临时新增日志。这里很奇怪，获取到的mBarrierDistanceStrategy=HsiBarrierDistanceStrategy，因为拿到的isShowFramework=false
-        Log.d(TAG, "isShowFramework=" + isShowFramework());
+        //Log.d(TAG, "isShowFramework=" + isShowFramework());
         mBarrierDistanceStrategy = isShowFramework() ? new PfdBarrierDistanceStrategy() : new HsiBarrierDistanceStrategy();
         //        mTextExtraPadding = getResources().getDimensionPixelSize(R.dimen.uxsdk_2_dp);
         mWaypointIcon = ContextCompat.getDrawable(getContext(), R.drawable.uxsdk_fpv_pfd_waypoint_right);
@@ -246,7 +246,7 @@ public class AttitudeDashBoard extends ScrollableAttributeDashBoard {
         //雷达避数据信息
         mCompositeDisposable.add(mWidgetModel.getRadarObstacleDataProcessor().toFlowable().subscribe(data -> {
             if (radarInformation.isConnected()) {
-                LogUtils.e(TAG, "雷达已连接");
+                //LogUtils.e(TAG, "雷达已连接");
                 //mUpwardRadarDistance 的值分两种情况，针对320这种没有雷达的有一个默认值，而这个默认值在绘制逻辑中会起作用，所以不能覆盖掉，不然会出现问题。只有针对检测到雷达有连接上才使用其真实值
                 mUpwardRadarDistance = data.getUpwardObstacleDistance() * 1f / 1000;
                 updateWidget();
@@ -787,7 +787,7 @@ public class AttitudeDashBoard extends ScrollableAttributeDashBoard {
         float barrierIndicatorHeight = avoidanceMaxHeight - offsetY;
         float maxPerceptionDistanceBarrierValue = mBarrierDistanceStrategy.getBarrierValue((float) maxPerceptionDistanceInMeter);
         if (maxPerceptionDistanceBarrierValue <= 0) {
-            LogUtils.e(TAG, "mMaxPerceptionDistanceInMeter must large than zero.");
+            //LogUtils.e(TAG, "mMaxPerceptionDistanceInMeter must large than zero.");
             return;
         }
 
@@ -893,15 +893,15 @@ public class AttitudeDashBoard extends ScrollableAttributeDashBoard {
     private int drawBarrierIndicator(Canvas canvas, int orientation, int restArea, float ratio, float[] canvasOffsetY) {
         float barrierDistance = orientation == UPWARD ? getUpwardBarrierDistance() : getDownVisionDistance();
         float barrierAvoidanceDistance = orientation == UPWARD ? mUserSetUpBarrierAvoidanceDistance : mUserSetDownBarrierAvoidanceDistance;
-        Log.d(TAG, "orientation=" + orientation + ",barrierDistance=" + barrierDistance + ",barrierAvoidanceDistance=" + barrierAvoidanceDistance);
+        //Log.d(TAG, "orientation=" + orientation + ",barrierDistance=" + barrierDistance + ",barrierAvoidanceDistance=" + barrierAvoidanceDistance);
 
         float barrierValue = mBarrierDistanceStrategy.getBarrierValue(barrierDistance);
         float barrierAvoidanceValue = mBarrierDistanceStrategy.getBarrierValue(barrierAvoidanceDistance);
 
 
         float upBarrierArea = (Math.min(barrierValue, barrierAvoidanceValue)) * ratio;
-        Log.d(TAG, "barrierValue=" + barrierValue + ",barrierAvoidanceValue=" + barrierAvoidanceValue + ",upBarrierArea=" + upBarrierArea + ",ratio" +
-                "=" + ratio);
+        /*Log.d(TAG, "barrierValue=" + barrierValue + ",barrierAvoidanceValue=" + barrierAvoidanceValue + ",upBarrierArea=" + upBarrierArea + ",ratio" +
+                "=" + ratio);*/
 
         if (upBarrierArea > 0) {
             mPaint.setColor(mBarrierIndicatorColor);
@@ -920,7 +920,7 @@ public class AttitudeDashBoard extends ScrollableAttributeDashBoard {
                 top = 0;
                 bottom = (int) upBarrierArea;
             }
-            Log.d(TAG, "top=" + top + ",bottom=" + bottom);
+            //Log.d(TAG, "top=" + top + ",bottom=" + bottom);
 
             RECT.set(-mAvoidanceIndicatorWidth, top, 0, bottom);
             canvas.drawRect(RECT, mPaint);
@@ -1019,7 +1019,7 @@ public class AttitudeDashBoard extends ScrollableAttributeDashBoard {
     private static class HsiBarrierDistanceStrategy implements IBarrierDistanceStrategy {
         @Override
         public float getBarrierValue(float distance) {
-            Log.d(TAG, "HsiBarrierDistanceStrategy getBarrierValue=" + distance);
+            //Log.d(TAG, "HsiBarrierDistanceStrategy getBarrierValue=" + distance);
 
             if (distance <= 0) {
                 return 0;
@@ -1036,7 +1036,7 @@ public class AttitudeDashBoard extends ScrollableAttributeDashBoard {
     private static class PfdBarrierDistanceStrategy implements IBarrierDistanceStrategy {
         @Override
         public float getBarrierValue(float distance) {
-            Log.d(TAG, "PfdBarrierDistanceStrategy getBarrierValue=" + distance);
+            //Log.d(TAG, "PfdBarrierDistanceStrategy getBarrierValue=" + distance);
 
             return distance;
         }

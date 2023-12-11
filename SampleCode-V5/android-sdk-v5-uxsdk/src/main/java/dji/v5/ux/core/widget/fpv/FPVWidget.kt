@@ -89,30 +89,6 @@ open class FPVWidget @JvmOverloads constructor(
     private var fpvStateChangeResourceId: Int = INVALID_RESOURCE
     private var videoDecoder: IVideoDecoder? = null
 
-    private val decoderStateChangeListener =
-        DecoderStateChangeListener { oldState, newState ->
-            /**
-             * 解码器状态事件回调方法
-             *
-             * @param oldState 解码器前一个状态
-             * @param newState 解码器当前状态
-             */
-            /**
-             * 解码器状态事件回调方法
-             *
-             * @param oldState 解码器前一个状态
-             * @param newState 解码器当前状态
-             */
-
-            val i = newState
-
-            //ToastUtils.showToast("Decoder State change from $oldState to $newState")
-            /*mainHandler.post {
-                channelVM.videoChannelInfo.value?.decoderState = newState
-                channelVM.refreshVideoChannelInfo()
-            }*/
-
-        }
 
     private val widgetModel: FPVWidgetModel = FPVWidgetModel(
         DJISDKModel.getInstance(), ObservableInMemoryKeyedStore.getInstance(), FlatCameraModule()
@@ -349,8 +325,6 @@ open class FPVWidget @JvmOverloads constructor(
                 fpvSurfaceView.height,
                 true
             )
-
-            videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
         } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
             videoDecoder?.onResume()
         }
@@ -361,13 +335,12 @@ open class FPVWidget @JvmOverloads constructor(
             videoDecoder = VideoDecoder(
                 context,
                 videoChannelType,
-                DecoderOutputMode.YUV_MODE,
+                DecoderOutputMode.SURFACE_MODE,
                 fpvSurfaceView.holder,
                 fpvSurfaceView.width,
                 fpvSurfaceView.height,
                 true
             )
-            videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
         } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
             videoDecoder?.onResume()
         }
@@ -377,42 +350,6 @@ open class FPVWidget @JvmOverloads constructor(
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         videoDecoder?.onPause()
     }
-
-    /*fun setYuvDataListener(listener: YuvDataListener) {
-        if (yuvDataListener == null) {
-            yuvDataListener = listener
-
-            videoDecoder?.let {
-                videoDecoder!!.onPause()
-                videoDecoder!!.destroy()
-                videoDecoder = null
-            }
-            videoDecoder = VideoDecoder(
-                context,
-                videoChannelType
-            )
-            videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
-            videoDecoder?.addYuvDataListener(this)
-        } else {
-            videoDecoder?.let {
-                videoDecoder!!.onPause()
-                videoDecoder!!.destroy()
-                videoDecoder = null
-            }
-            videoDecoder = VideoDecoder(
-                context,
-                videoChannelType,
-                DecoderOutputMode.SURFACE_MODE,
-                fpvSurfaceView.holder
-            )
-            videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
-            videoDecoder?.removeYuvDataListener(this)
-        }
-    }*/
-    /*override fun onReceive(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
-        yuvDataListener?.onReceive(mediaFormat, data, width, height)
-    }*/
-
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
         if (!isInEditMode) {

@@ -29,7 +29,6 @@ import dji.v5.utils.common.DjiSharedPreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -55,8 +54,12 @@ class LiveStreamVM : DJIViewModel() {
     val rabbitMq = RabbitMq()
     private var startTimeFrame = 0L
     private var counter = 0
-    private val _actualFps: MutableLiveData<Int> = MutableLiveData(0)
-    val actualFps: LiveData<Int> = _actualFps
+    private var kbps = 0.0
+
+    private val _info: MutableLiveData<String> = MutableLiveData()
+    val info: LiveData<String> = _info
+    private val _error: MutableLiveData<String> = MutableLiveData()
+    val error: LiveData<String> = _error
 
     private var repeatJob: Job? = null
     init {
@@ -298,20 +301,31 @@ class LiveStreamVM : DJIViewModel() {
         rabbitMq.setupConnectionFactory(userName, password, virtualHost, host, port)
 
         viewModelScope.launch(Dispatchers.IO) {
-            rabbitMq.prepareConnection(queueName)
+            try {
+                rabbitMq.prepareConnection(queueName)
 
-            repeatJob = sendLocationToServer()
+                repeatJob = sendLocationToServer()
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _error.value = e.message
+            }
         }
     }
 
     fun publishMessage(queue: String, message: ByteArray) {
         viewModelScope.launch(Dispatchers.IO) {
-            rabbitMq.publishMessage(queue, message)
-            getFps()
+            try {
+                rabbitMq.publishMessage(queue, message)
+                getFps(message)
+            } catch (e: InterruptedException) {
+                e.printStackTrace()
+                _error.value = e.message
+            }
         }
     }
 
-    fun getFps() {
+    fun getFps(biteArray: ByteArray) {
         if (startTimeFrame == 0L) {
             startTimeFrame = System.currentTimeMillis()
             counter++
@@ -321,14 +335,20 @@ class LiveStreamVM : DJIViewModel() {
             val seconds = difference / 1000.0
 
             if(seconds >= 1) {
-                _actualFps.postValue(counter)
+                _info.postValue("$counter fps\n${String.format("%.2f", kbps)} kbps")
                 counter = 0
+                kbps = 0.0
                 startTimeFrame = System.currentTimeMillis()
             }else{
                 counter++
+                kbps =+ getByteArraySize(biteArray)
             }
         }
-        Log.i("CameraProcessImage", "fps ${_actualFps.value}")
+        Log.i("FrameByFrame", "$counter fps | ${String.format("%.2f", kbps)} kbps")
+    }
+
+    private fun getByteArraySize(biteArray: ByteArray): Double {
+        return biteArray.size / 1024.0
     }
 
     private fun sendLocationToServer(): Job {
@@ -341,8 +361,9 @@ class LiveStreamVM : DJIViewModel() {
                         location?.longitude
                     )
                 )
-
+                Log.i("FrameByFrame", "latitude:  ${location?.latitude} | longitude: ${location?.longitude}")
                 publishMessage(RABBITMQ_QUEUE_LOCATION_NAME, locationJson.toByteArray())
+
                 delay(5000L)
             }
         }

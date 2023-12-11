@@ -96,8 +96,12 @@ import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingConfig
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingInfo
 import kotlinx.android.synthetic.main.frag_live_stream_page.fbStreamingQuality
 import kotlinx.android.synthetic.main.frag_live_stream_page.tv_live_stream_info
+import kotlinx.android.synthetic.main.frag_mediafile_details.image
 import kotlinx.android.synthetic.main.video_play_page.surfaceView
 import kotlinx.android.synthetic.main.video_play_page.view.surfaceView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.util.Timer
 import java.util.TimerTask
@@ -169,6 +173,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     private var secondaryChannelStateListener: VideoChannelStateChangeListener? = null
 
     private var videoDecoder: IVideoDecoder? = null
+    private var imageProcessed: Boolean = true
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -314,7 +319,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             it?.let {
                 fps = it.fps
                 vbps = it.vbps
-                isStreaming = it.isStreaming
+                //isStreaming = it.isStreaming
                 resolution_w = it.resolution?.width!!
                 resolution_h = it.resolution?.height!!
                 packet_loss = it.packetLoss
@@ -329,6 +334,10 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                 error = it
                 updateLiveStreamInfo()
             }
+        }
+
+        liveStreamVM.error.observe(viewLifecycleOwner) {
+            ToastUtils.showToast(it)
         }
     }
 
@@ -412,32 +421,32 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             )
         if (primaryChannel != null) {
             primaryChannelStateListener =
-                VideoChannelStateChangeListener { from: VideoChannelState?, to: VideoChannelState ->
+                VideoChannelStateChangeListener { _: VideoChannelState?, to: VideoChannelState ->
                     val primaryStreamSource =
                         primaryChannel.streamSource
                     if (VideoChannelState.ON == to && primaryStreamSource != null) {
-                        activity?.runOnUiThread({
+                        activity?.runOnUiThread {
                             primaryFpvWidget.updateVideoSource(
                                 primaryStreamSource,
                                 VideoChannelType.PRIMARY_STREAM_CHANNEL
                             )
-                        })
+                        }
                     }
                 }
             primaryChannel.addVideoChannelStateChangeListener(primaryChannelStateListener)
         }
         if (secondaryChannel != null) {
             secondaryChannelStateListener =
-                VideoChannelStateChangeListener { from: VideoChannelState?, to: VideoChannelState ->
+                VideoChannelStateChangeListener { _: VideoChannelState?, to: VideoChannelState ->
                     val secondaryStreamSource =
                         secondaryChannel.streamSource
                     if (VideoChannelState.ON == to && secondaryStreamSource != null) {
-                        activity?.runOnUiThread( {
+                        activity?.runOnUiThread {
                             secondaryFPVWidget.updateVideoSource(
                                 secondaryStreamSource,
                                 VideoChannelType.SECONDARY_STREAM_CHANNEL
                             )
-                        })
+                        }
                     }
                 }
             secondaryChannel.addVideoChannelStateChangeListener(secondaryChannelStateListener)
@@ -449,7 +458,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
                 VideoChannelType.PRIMARY_STREAM_CHANNEL
             )
-
 
         val secondaryChannel =
             MediaDataCenter.getInstance().videoStreamManager.getAvailableVideoChannel(
@@ -542,6 +550,11 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     }
 
     private fun swapVideoSource() {
+        var restartStreaming = false
+        if (isStreaming) {
+            stopStreamFrameByFrame()
+            restartStreaming = true
+        }
         val primaryVideoChannel = primaryFpvWidget.videoChannelType
         val primaryStreamSource = primaryFpvWidget.getStreamSource()
         val secondaryVideoChannel = secondaryFPVWidget.videoChannelType
@@ -550,6 +563,8 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         if (secondaryStreamSource != null && primaryStreamSource != null) {
             primaryFpvWidget.updateVideoSource(secondaryStreamSource, secondaryVideoChannel)
             secondaryFPVWidget.updateVideoSource(primaryStreamSource, primaryVideoChannel)
+
+            if (restartStreaming) startStreamFrameByFrame()
         }
     }
 
@@ -578,39 +593,11 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                     startStream()
                     fbStartStop.setImageResource(R.drawable.ic_stop)
                 }*/
-                //primaryFpvWidget.setYuvDataListener(this)
-                if (!isStreaming) {
-                    fbStartStop.setImageResource(R.drawable.ic_play)
 
-                    videoDecoder?.let {
-                        videoDecoder!!.onPause()
-                        videoDecoder!!.destroy()
-                        videoDecoder = null
-                    }
-                    videoDecoder = VideoDecoder(
-                        context,
-                        primaryFpvWidget.videoChannelType,
-                        DecoderOutputMode.YUV_MODE,
-                        primaryFpvWidget.fpvSurfaceView.holder
-                    )
-                    //videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
-                    videoDecoder?.addYuvDataListener(this)
-                    isStreaming = true
+                if (!isStreaming) {
+                    startStreamFrameByFrame()
                 } else {
-                    fbStartStop.setImageResource(R.drawable.ic_stop)
-                    videoDecoder?.let {
-                        videoDecoder!!.onPause()
-                        videoDecoder!!.destroy()
-                        videoDecoder = null
-                    }
-                    /*videoDecoder = VideoDecoder(
-                        context,
-                        primaryFpvWidget.videoChannelType,
-                        DecoderOutputMode.YUV_MODE,
-                        primaryFpvWidget.fpvSurfaceView.holder
-                    )*/
-                    //videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
-                    videoDecoder?.removeYuvDataListener(this)
+                    stopStreamFrameByFrame()
                 }
             }
 
@@ -635,18 +622,6 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             R.id.fbStreamingInfo -> {
                 showStreamInfo = !showStreamInfo
                 tv_live_stream_info.isVisible = showStreamInfo
-                /*videoDecoder?.let {
-                    videoDecoder!!.onPause()
-                    videoDecoder!!.destroy()
-                    videoDecoder = null
-                }
-                videoDecoder = VideoDecoder(
-                    this@DefaultLayoutTestFragment.context,
-                    videoChannel!!.videoChannelType
-                )
-               // videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
-                videoDecoder?.addYuvDataListener(this)*/
-
             }
 
             R.id.fbStreamingQuality -> {
@@ -721,6 +696,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         liveStreamVM.startStream(object : CommonCallbacks.CompletionCallback {
             override fun onSuccess() {
                 ToastUtils.showToast(StringUtils.getResStr(R.string.msg_start_live_stream_success))
+                fbStartStop.setImageResource(R.drawable.ic_stop)
             }
 
             override fun onFailure(error: IDJIError) {
@@ -739,6 +715,7 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
             override fun onSuccess() {
                 ToastUtils.showToast(StringUtils.getResStr(R.string.msg_stop_live_stream_success))
                 clearLiveStreamInfo()
+                fbStartStop.setImageResource(R.drawable.ic_play)
             }
 
             override fun onFailure(error: IDJIError) {
@@ -750,6 +727,36 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
                 )
             }
         })
+    }
+
+    private fun startStreamFrameByFrame() {
+        videoDecoder?.let {
+            videoDecoder!!.onPause()
+            videoDecoder!!.destroy()
+            videoDecoder = null
+        }
+        videoDecoder = VideoDecoder(
+            context,
+            primaryFpvWidget.videoChannelType,
+            DecoderOutputMode.YUV_MODE,
+            primaryFpvWidget.fpvSurfaceView.holder
+        )
+        videoDecoder?.addYuvDataListener(this)
+        isStreaming = true
+        fbStartStop.setImageResource(R.drawable.ic_stop)
+    }
+
+    private fun stopStreamFrameByFrame() {
+        fbStartStop.setImageResource(R.drawable.ic_play)
+
+        videoDecoder?.removeYuvDataListener(this)
+
+        videoDecoder?.let {
+            videoDecoder!!.onPause()
+            videoDecoder!!.destroy()
+            videoDecoder = null
+        }
+        isStreaming = false
     }
 
     private fun showSetLiveStreamRtmpConfigDialog() {
@@ -1247,63 +1254,18 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         }
     }
 
-    private val decoderStateChangeListener =
-        DecoderStateChangeListener { oldState, newState ->
-            /**
-             * 解码器状态事件回调方法
-             *
-             * @param oldState 解码器前一个状态
-             * @param newState 解码器当前状态
-             */
-            /**
-             * 解码器状态事件回调方法
-             *
-             * @param oldState 解码器前一个状态
-             * @param newState 解码器当前状态
-             */
-
-            //ToastUtils.showToast("Decoder State change from $oldState to $newState")
-        }
-
     override fun surfaceCreated(holder: SurfaceHolder) {
-        /*if (videoDecoder == null) {
-
-                videoDecoder = VideoDecoder(
-                    this@DefaultLayoutTestFragment.context,
-                    primaryFpvWidget.videoChannelType,
-                    DecoderOutputMode.SURFACE_MODE,
-                    surfaceView.holder
-                )
-                videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
-
-        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
-            videoDecoder?.onResume()
-        }*/
-
         curWidth = surfaceView.width
         curHeight = surfaceView.height
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        /*if (videoDecoder == null) {
-            videoDecoder = VideoDecoder(
-                this@DefaultLayoutTestFragment.context,
-                primaryFpvWidget.videoChannelType,
-                DecoderOutputMode.SURFACE_MODE,
-                surfaceView.holder
-            )
-            videoDecoder?.addDecoderStateChangeListener(decoderStateChangeListener)
-
-        } else if (videoDecoder?.decoderStatus == DecoderState.PAUSED) {
-            videoDecoder?.onResume()
-        }*/
-
         curWidth = width
         curHeight = height
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        //videoDecoder?.onPause()
+        videoDecoder?.onPause()
     }
 
     override fun onDestroyView() {
@@ -1328,9 +1290,10 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
     )
 
     override fun onReceive(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
-        //AsyncTask.execute(Runnable {
+        if (imageProcessed) {
+            imageProcessed = false
             saveYuvData(mediaFormat, data, width, height)
-        //})
+        }
     }
 
     private fun saveYuvData(mediaFormat: MediaFormat?, data: ByteArray?, width: Int, height: Int) {
@@ -1410,8 +1373,9 @@ class DefaultLayoutTestFragment : DJIFragment(), View.OnClickListener, SurfaceHo
         val imageBytes = out.toByteArray()
         val image = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
 
-        liveStreamVM.getFps()
-        //liveStreamVM.publishMessage(RABBITMQ_QUEUE_NAME, bitmapToByteArray(image))
+        imageProcessed = true
+
+        liveStreamVM.publishMessage(RABBITMQ_QUEUE_NAME, bitmapToByteArray(image))
     }
 
     private fun bitmapToByteArray(
